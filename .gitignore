@@ -1,0 +1,10 @@
+.idea/
+.rebar/
+deps/
+ebin/
+rel/redis_proxy/
+c_src/
+!c_src/get_redis.sh
+*~
+*.iml
+*.dump
