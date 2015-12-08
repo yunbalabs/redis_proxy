@@ -121,7 +121,7 @@ start_redis(Index, GroupIndex) ->
     ok = filelib:ensure_dir(RedisDataDir),
     ok = case redis_proxy_util:file_exists(RedisUnixSocketFile) of
         true ->
-            %% TODO: close the former redis
+            try_stop_redis(RedisUnixSocketFile),
             file:delete(RedisUnixSocketFile);
         _ ->
             ok
@@ -208,5 +208,13 @@ try_start_redis(Executable, ConfigFile, UnixSocketFile, DataDir, TryTimes) ->
                     try_start_redis(Executable, ConfigFile, UnixSocketFile, DataDir, TryTimes - 1)
             end;
         {'EXIT', Port, Reason} ->
+            {error, Reason}
+    end.
+
+try_stop_redis(RedisUnixSocketFile) ->
+    case connect_redis(RedisUnixSocketFile) of
+        {ok, RedisContext} ->
+            hierdis:command(RedisContext, [<<"SHUTDOWN">>]);
+        {error, Reason} ->
             {error, Reason}
     end.
