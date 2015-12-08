@@ -121,6 +121,7 @@ start_redis(Index, GroupIndex) ->
     ok = filelib:ensure_dir(RedisDataDir),
     ok = case redis_proxy_util:file_exists(RedisUnixSocketFile) of
         true ->
+            %% TODO: close the former redis
             file:delete(RedisUnixSocketFile);
         _ ->
             ok
@@ -148,13 +149,12 @@ get_available_replica(Index) ->
     AllOwners = distributed_proxy_ring:get_owners(Ring),
     {Index, GroupId} = lists:keyfind(Index, 1, AllOwners),
     Nodes = distributed_proxy_ring:get_nodes(GroupId, Ring),
-    UpNodes = distributed_proxy_node_watcher:nodes(),
-    request_slaveof(lists:delete(node(), Nodes), UpNodes, Index, 1).
+    request_slaveof(lists:delete(node(), Nodes), Index, 1).
 
-request_slaveof([], _UpNodes, _Index, _GroupIndex) ->
+request_slaveof([], _Index, _GroupIndex) ->
     not_found;
-request_slaveof([Node | Rest], UpNodes, Index, GroupIndex) ->
-    case lists:member(Node, UpNodes) of
+request_slaveof([Node | Rest], Index, GroupIndex) ->
+    case distributed_proxy_node_watcher:is_up(Node) of
         true ->
             ProxyName = distributed_proxy_util:replica_proxy_reg_name(list_to_binary(lists:flatten(io_lib:format("~w_~w", [Index, GroupIndex])))),
             case distributed_proxy_replica_proxy:get_my_replica_pid({ProxyName, Node}) of
@@ -165,16 +165,16 @@ request_slaveof([Node | Rest], UpNodes, Index, GroupIndex) ->
                                 ok ->
                                     {ok, Pid, ReplicaHost, ReplicaPort};
                                 _Error ->
-                                    request_slaveof(Rest, UpNodes, Index, GroupIndex + 1)
+                                    request_slaveof(Rest, Index, GroupIndex + 1)
                             end;
                         {error, _Reason} ->
-                            request_slaveof(Rest, UpNodes, Index, GroupIndex + 1)
+                            request_slaveof(Rest, Index, GroupIndex + 1)
                     end;
                 not_started ->
-                    request_slaveof(Rest, UpNodes, Index, GroupIndex + 1)
+                    request_slaveof(Rest, Index, GroupIndex + 1)
             end;
         false ->
-            request_slaveof(Rest, UpNodes, Index, GroupIndex + 1)
+            request_slaveof(Rest, Index, GroupIndex + 1)
     end.
 
 check_slaveof_state(ReplicaPid) ->
