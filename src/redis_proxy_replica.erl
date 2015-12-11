@@ -77,9 +77,10 @@ check_warnup_state(State = #state{redis_context = RedisContext, slaveof_replica 
 check_warnup_state(State = #state{warnup_state = finished}) ->
     {ok, up, State}.
 
-handle_request(Request, Sender, State) ->
+handle_request(Request, Sender, State = #state{redis_context = RedisContext}) ->
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
-    {reply, ok, State}.
+    Result = hierdis:command(RedisContext, Request),
+    {reply, Result, State}.
 
 terminate(_Reason, #state{redis_context = RedisContext}) ->
     hierdis:command(RedisContext, [<<"SHUTDOWN">>]),
@@ -122,7 +123,8 @@ start_redis(Index, GroupIndex) ->
     ok = case redis_proxy_util:file_exists(RedisUnixSocketFile) of
         true ->
             try_stop_redis(RedisUnixSocketFile),
-            file:delete(RedisUnixSocketFile);
+            file:delete(RedisUnixSocketFile),
+            ok;
         _ ->
             ok
     end,
