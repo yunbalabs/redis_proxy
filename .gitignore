@@ -6,6 +6,9 @@ rel/redis_proxy/
 c_src/
 !c_src/get_redis.sh
 priv/redis/redis-server
+test/log/
+test/logs/
 *~
 *.iml
 *.dump
+*.beam

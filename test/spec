@@ -1,0 +1,9 @@
+{node, a, 'a@zy-computer.local'}.
+{node, b, 'b@zy-computer.local'}.
+{alias, test_dir, "./"}.
+{init, [a,b], [{node_start, [{monitor_master, true}, {kill_if_fail, true}, {erl_flags, "-config /home/zy/projects/redis_proxy/test/app.config -pa /home/zy/projects/redis_proxy/ebin -pa /home/zy/projects/redis_proxy/deps/*/ebin"}]}]}.
+{logdir, master, "./logs/"}.
+{logdir, "./logs/"}.
+{config, "/home/zy/projects/redis_proxy/test/test.config"}.
+{groups, [a], test_dir, redis_proxy_replica_SUITE, responser}.
+{groups, [b], test_dir, redis_proxy_replica_SUITE, requester}.

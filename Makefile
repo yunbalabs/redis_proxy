@@ -1,6 +1,6 @@
 REBAR = ./rebar -j8
 
-.PHONY: deps
+.PHONY: all deps test clean
 
 all: deps compile
 
@@ -18,3 +18,6 @@ console: generate
 
 clean:
 	${REBAR} clean
+
+test:
+	cd test && ./generate_config.sh && ./run.erl && ./gc.sh
