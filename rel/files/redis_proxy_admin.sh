@@ -90,7 +90,7 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Usage: $SCRIPT join | status "
+        echo "Usage: $SCRIPT join | status | replicas"
         exit 1
         ;;
 esac

@@ -10,6 +10,9 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+    CommandTypes = [{"get", r}, {"set", w}],
+
+    ok = redis_protocol:start([CommandTypes]),
     redis_proxy_sup:start_link().
 
 stop(_State) ->

@@ -9,11 +9,20 @@
 ##-heart
 
 ## Enable kernel poll and a few async threads
-##+K true
-##+A 5
++K true
++A 64
 
 ## Increase number of concurrent ports/sockets
-##-env ERL_MAX_PORTS 4096
+-env ERL_MAX_PORTS 4096
 
 ## Tweak GC to run more often
-##-env ERL_FULLSWEEP_AFTER 10
+-env ERL_FULLSWEEP_AFTER 0
+
+## Disable scheduler compaction of load
++scl false
+
+## All run queues will be scanned each 500 milliseconds
++sfwi 500
+
+## A larger buffer limit will allow processes to buffer more outgoing messages over the distribution
++zdbbl 32768

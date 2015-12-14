@@ -13,8 +13,11 @@ compile: deps
 generate: compile
 	cd rel && ../${REBAR} generate -f
 
-console: generate
-	./rel/redis_proxy/bin/redis_proxy console
+start: generate
+	./rel/redis_proxy/bin/redis_proxy start
+
+stop:
+	./rel/redis_proxy/bin/redis_proxy stop
 
 clean:
 	${REBAR} clean
