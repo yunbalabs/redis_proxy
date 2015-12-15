@@ -89,8 +89,20 @@ case "$1" in
             exit 1
         fi
         ;;
+    config)
+        if [ $# -eq 2 ]; then
+            ensure_node_running
+            $NODETOOL rpc distributed_proxy_config get $2
+        elif [ $# -eq 3 ]; then
+            ensure_node_running
+            $NODETOOL rpc distributed_proxy_config set $2 $3
+        else
+            echo "Usage: $SCRIPT config <name> [<value>]"
+            exit 1
+        fi
+        ;;
     *)
-        echo "Usage: $SCRIPT join | status | replicas"
+        echo "Usage: $SCRIPT join | status | replicas | config"
         exit 1
         ;;
 esac
