@@ -108,28 +108,18 @@ request_replicas(w, KeyBin, Command, _State) ->
 parse_response(r, _Command, [{ok, Result}], _State) ->
     {ok, Result};
 parse_response(r, Command, [{error, Reason}], _State) ->
-    %% TODO: try again
+    %% TODO: try again when the error is temporarily_unavailable
     lager:error("command ~p error ~p", [Command, Reason]),
-    {error, <<"Response error">>};
+    {error, <<"ERR response error">>};
 parse_response(r, _Command, [{forward, Info}], _State) ->
     {error, Info};
 parse_response(w, Command, Results, _State) ->
-    case lists:all(
-        fun(Result) ->
-            case Result of
-                {ok, <<"OK">>} ->
-                    true;
-                {error, temporarily_unavailable} ->
-                    true;
-                {error, Reason} ->
-                    lager:error("command ~p error ~p", [Command, Reason]),
-                    false
-            end
-        end, Results) of
-
-        true -> {ok, ok};
-        false -> {error, <<"Response error">>}
-
+    case write_response_success(Results, length(Results)) of
+        ok ->
+            {ok, ok};
+        {error, Reason} ->
+            lager:error("command ~p error ~p", [Command, Reason]),
+            {error, <<"ERR response error">>}
     end.
 
 reply(Connection, Response) ->
@@ -153,3 +143,14 @@ wait_for_response(Responses, RequestNum) ->
         {ok, Result} ->
             wait_for_response([{ok, Result} | Responses], RequestNum - 1)
     end.
+
+write_response_success([], 0) ->
+    {error, all_replicas_unavailable};
+write_response_success([], _TmpUnaibleCount) ->
+    ok;
+write_response_success([{ok, <<"OK">>} | Rest], TmpUnaibleCount) ->
+    write_response_success(Rest, TmpUnaibleCount);
+write_response_success([{error, temporarily_unavailable} | Rest], TmpUnaibleCount) ->
+    write_response_success(Rest, TmpUnaibleCount - 1);
+write_response_success([{error, Reason} | _Rest], _TmpUnaibleCount) ->
+    {error, Reason}.
