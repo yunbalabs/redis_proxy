@@ -47,8 +47,7 @@ handle_redis(Connection, Action, State) ->
     end,
     {ok, State}.
 
-handle_info(_Connection, Info, State) ->
-    lager:error("unknown info: ~p", [Info]),
+handle_info(_Connection, _Info, State) ->
     {stop, State}.
 
 terminate(_State) ->

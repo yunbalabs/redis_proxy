@@ -79,6 +79,7 @@ check_warnup_state(State = #state{warnup_state = finished}) ->
 
 handle_request(Request, Sender, State = #state{redis_context = RedisContext}) ->
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
+    %% TODO: handle connection lost
     Result = hierdis:command(RedisContext, Request),
     {reply, Result, State}.
 
