@@ -89,6 +89,22 @@ case "$1" in
             exit 1
         fi
         ;;
+    map)
+        ensure_node_running
+        $NODETOOL rpc distributed_proxy_cli command "dp-admin" "cluster" "map"
+        ;;
+    replica)
+        if [ $# -eq 2 ]; then
+            ensure_node_running
+            $NODETOOL rpc distributed_proxy_cli command "dp-admin" "cluster" "replica" "--replica" "$2"
+        elif [ $# -eq 3 ]; then
+            ensure_node_running
+            $NODETOOL rpc distributed_proxy_cli command "dp-admin" "cluster" "replica" "--replica" "$2" "--node" "$3"
+        else
+            echo "Usage: $SCRIPT replica replica_id [<node>]"
+            exit 1
+        fi
+        ;;
     config)
         if [ $# -eq 2 ]; then
             ensure_node_running
@@ -102,7 +118,7 @@ case "$1" in
         fi
         ;;
     *)
-        echo "Usage: $SCRIPT join | status | replicas | config"
+        echo "Usage: $SCRIPT join | status | replicas | map | replica | config"
         exit 1
         ;;
 esac
