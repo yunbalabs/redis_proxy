@@ -76,7 +76,7 @@ parse_command(_Command, _State) ->
 
 request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForward}) ->
     {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
-    [{Idx, GroupId}] = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
+    {Idx, _Pos, GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
     Nodes = distributed_proxy_ring:get_nodes(GroupId, Ring),
     case lists:member(node(), Nodes) of
         true ->
@@ -98,7 +98,7 @@ request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForw
     end;
 request_replicas(w, KeyBin, Command, _State) ->
     {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
-    [{Idx, GroupId}] = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
+    {Idx, _Pos, GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
     Nodes = distributed_proxy_ring:get_nodes(GroupId, Ring),
     RequestNodes = redis_proxy_util:generate_apl(Nodes),
     Response = request_replica(RequestNodes, Idx, Command, 0),
