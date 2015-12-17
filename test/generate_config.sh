@@ -10,7 +10,8 @@ generate_spec() {
 
 	echo "{alias, test_dir, \"./\"}." >> spec
 
-	echo "{init, [a,b], [{node_start, [{monitor_master, true}, {kill_if_fail, true}, {erl_flags, \"-config ${TESTDIR}/app.config -pa ${ROOT}/ebin -pa ${ROOT}/deps/*/ebin\"}]}]}." >> spec
+	echo "{init, [a], [{node_start, [{monitor_master, true}, {kill_if_fail, true}, {erl_flags, \"-config ${TESTDIR}/app.config -pa ${ROOT}/ebin -pa ${ROOT}/deps/*/ebin\"}]}]}." >> spec
+	echo "{init, [b], [{node_start, [{monitor_master, true}, {kill_if_fail, true}, {erl_flags, \"-config ${TESTDIR}/app2.config -pa ${ROOT}/ebin -pa ${ROOT}/deps/*/ebin\"}]}]}." >> spec
 
 	echo "{logdir, master, \"./logs/\"}." >> spec
 	echo "{logdir, \"./logs/\"}." >> spec

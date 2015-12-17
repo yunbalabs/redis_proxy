@@ -76,8 +76,8 @@ parse_command(_Command, _State) ->
 
 request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForward}) ->
     {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
-    {Idx, _Pos, GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
-    Nodes = distributed_proxy_ring:get_nodes(GroupId, Ring),
+    {Idx, Pos, _GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
+    Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
     case lists:member(node(), Nodes) of
         true ->
             GroupIndex = distributed_proxy_util:index_of(node(), Nodes),
@@ -98,8 +98,8 @@ request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForw
     end;
 request_replicas(w, KeyBin, Command, _State) ->
     {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
-    {Idx, _Pos, GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
-    Nodes = distributed_proxy_ring:get_nodes(GroupId, Ring),
+    {Idx, Pos, _GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
+    Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
     RequestNodes = redis_proxy_util:generate_apl(Nodes),
     Response = request_replica(RequestNodes, Idx, Command, 0),
     {ok, Response}.

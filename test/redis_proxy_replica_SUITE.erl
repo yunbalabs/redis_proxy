@@ -74,6 +74,7 @@ init_per_suite(Config) ->
     ok = application:ensure_started(clique),
     ok = distributed_proxy:start(),
     ok = application:ensure_started(hierdis),
+    ok = application:ensure_started(ranch),
     ok = redis_proxy:start(),
     {ok, MyRing} = distributed_proxy_ring_manager:get_ring(),
     Owners = distributed_proxy_ring:get_owners(MyRing),

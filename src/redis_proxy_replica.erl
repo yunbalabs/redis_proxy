@@ -151,7 +151,8 @@ get_available_replica(Index) ->
     {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
     AllOwners = distributed_proxy_ring:get_owners(Ring),
     {Index, GroupId} = lists:keyfind(Index, 1, AllOwners),
-    Nodes = distributed_proxy_ring:get_nodes(GroupId, Ring),
+    Pos = distributed_proxy_ring:index2pos({Index, GroupId}, Ring),
+    Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
     request_slaveof(lists:delete(node(), Nodes), Index, 1).
 
 request_slaveof([], _Index, _GroupIndex) ->
