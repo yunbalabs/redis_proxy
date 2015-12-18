@@ -136,8 +136,8 @@ wait_for_messages(Config) ->
 
 wait_for_message(Config) ->
     receive
-        {write_data, Idx, Sender} ->
-            {ok, ReplicaPid} = distributed_proxy_replica_manager:get_replica_pid(Idx),
+        {write_data, {Idx, GroupIndex}, Sender} ->
+            {ok, ReplicaPid} = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex}),
             lists:foreach(
                 fun (Key) ->
                     distributed_proxy_message:send(ReplicaPid, ["SET", integer_to_list(Key), "test"]),
@@ -156,24 +156,28 @@ join_cluster(Config) ->
     wait_replica_started(AnotherNode, Owners),
 
     [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
-    ok = distributed_proxy:join_cluster(AnotherNode).
+    ok = distributed_proxy:join_cluster(AnotherNode),
+    wait_replica_started(node(), Owners).
 
 test_slaveof_without_data(_Config) ->
     Idx = 0,
-    {ok, ReplicaPid} = distributed_proxy_replica_manager:get_replica_pid(Idx),
+    GroupIndex = 2,
+    {ok, ReplicaPid} = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex}),
     exit(ReplicaPid, kill),
     wait_replica_started(node(), [{Idx, undefined}]).
 
 test_slaveof_with_data(Config) ->
     Idx = 0,
+    GroupIndex = 1,
     [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
-    erlang:send({?MODULE, AnotherNode}, {write_data, Idx, self()}),
+    erlang:send({?MODULE, AnotherNode}, {write_data, {Idx, GroupIndex}, self()}),
     receive done -> ok end,
 
-    {ok, ReplicaPid} = distributed_proxy_replica_manager:get_replica_pid(Idx),
+    GroupIndex2 = 2,
+    {ok, ReplicaPid} = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex2}),
     exit(ReplicaPid, kill),
     wait_replica_started(node(), [{Idx, undefined}]),
-    {ok, ReplicaPid2} = distributed_proxy_replica_manager:get_replica_pid(Idx),
+    {ok, ReplicaPid2} = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex2}),
     lists:foreach(
         fun (Key) ->
             distributed_proxy_message:send(ReplicaPid2, ["GET", integer_to_list(Key)]),
@@ -187,9 +191,9 @@ test_finished(Config) ->
     true.
 
 wait_replica_started(Node, Owners) ->
-    NotActived = lists:filter(
-        fun({Idx, _GroupId}) ->
-            case distributed_proxy_util:safe_rpc(Node, distributed_proxy_replica_manager, get_replica_pid, [Idx], 3000) of
+    ActiveFun =
+        fun (Idx, GroupIndex) ->
+            case distributed_proxy_util:safe_rpc(Node, distributed_proxy_replica_manager, get_replica_pid, [{Idx, GroupIndex}], 3000) of
                 {badrpc, _} -> true;
                 {ok, Pid} ->
                     case catch sys:get_status(Pid, 3000) of
@@ -208,6 +212,13 @@ wait_replica_started(Node, Owners) ->
                 not_found ->
                     true
             end
+        end,
+
+    NotActived = lists:filter(
+        fun({Idx, _GroupId}) ->
+            Ret1 = ActiveFun(Idx, 1),
+            Ret2 = ActiveFun(Idx, 2),
+            Ret1 andalso Ret2
         end, Owners),
     case NotActived of
         [] ->

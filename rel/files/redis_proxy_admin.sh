@@ -101,7 +101,16 @@ case "$1" in
             ensure_node_running
             $NODETOOL rpc distributed_proxy_cli command "dp-admin" "cluster" "replica" "--replica" "$2" "--node" "$3"
         else
-            echo "Usage: $SCRIPT replica replica_id [<node>]"
+            echo "Usage: $SCRIPT replica <replica_id> [<node>]"
+            exit 1
+        fi
+        ;;
+    locate)
+        if [ $# -eq 2 ]; then
+            ensure_node_running
+            $NODETOOL rpc distributed_proxy_cli command "dp-admin" "cluster" "locate" "--key" "$2"
+        else
+            echo "Usage: $SCRIPT locate <key>"
             exit 1
         fi
         ;;

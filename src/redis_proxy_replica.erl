@@ -10,7 +10,7 @@
 -author("zy").
 
 %% API
--export([init/2, check_warnup_state/1, handle_request/3, terminate/2, get_slaveof_state/1]).
+-export([init/2, check_warnup_state/1, actived/1, handle_request/3, terminate/2, get_slaveof_state/1]).
 
 -record(state, {index, group_index, warnup_state, redis_context, redis_host, redis_port, slaveof_replica}).
 
@@ -28,7 +28,8 @@ init(Index, GroupIndex) ->
                         index = Index, group_index = GroupIndex,
                         warnup_state = loading,
                         redis_context = RedisContext,
-                        redis_host = net_adm:localhost(), redis_port = RedisPort
+                        redis_host = net_adm:localhost(), redis_port = RedisPort,
+                        slaveof_replica = undefined
                     }};
                 {error, Reason} ->
                     {error, Reason}
@@ -63,7 +64,6 @@ check_warnup_state(State = #state{redis_context = RedisContext, slaveof_replica 
             refuse_request(SlaveofReplica),
             {ok, warnup, State};
         finished ->
-            accept_request(SlaveofReplica),
             case hierdis:command(RedisContext, ["SLAVEOF", "NO", "ONE"]) of
                 {ok, <<"OK">>} ->
                     {ok, up, State#state{warnup_state = finished}};
@@ -76,6 +76,12 @@ check_warnup_state(State = #state{redis_context = RedisContext, slaveof_replica 
     end;
 check_warnup_state(State = #state{warnup_state = finished}) ->
     {ok, up, State}.
+
+actived(State = #state{slaveof_replica = undefined}) ->
+    {ok, State};
+actived(State = #state{slaveof_replica = SlaveofReplica}) ->
+    accept_request(SlaveofReplica),
+    {ok, State}.
 
 handle_request(Request, Sender, State = #state{redis_context = RedisContext}) ->
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
