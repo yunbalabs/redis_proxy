@@ -60,7 +60,7 @@ parse_command(Command, #state{command_type_dict = CommandTypes}) when length(Com
         {ok, Type} ->
             {ok, Type, KeyBin, Command};
         error ->
-            {error, <<"Unknown type">>}
+            {error, <<"ERR unknown command '", NameBin/binary, "'">>}
     end;
 parse_command(Command, #state{command_type_dict = CommandTypes}) when length(Command) =:= 1 ->
     [NameBin] = Command,
@@ -69,10 +69,10 @@ parse_command(Command, #state{command_type_dict = CommandTypes}) when length(Com
         {ok, Type} ->
             {ok, Type, Command};
         error ->
-            {error, <<"Unknown type">>}
+            {error, <<"ERR unknown command '", NameBin/binary, "'">>}
     end;
 parse_command(_Command, _State) ->
-    {error, <<"Invalid command">>}.
+    {error, <<"ERR invalid command">>}.
 
 request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForward}) ->
     {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
