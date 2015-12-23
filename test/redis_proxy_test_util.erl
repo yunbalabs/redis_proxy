@@ -27,6 +27,7 @@ start_application() ->
     ok = application:ensure_started(clique),
     ok = distributed_proxy:start(),
     ok = application:ensure_started(ranch),
+    ok = application:ensure_started(eredis_pool),
     redis_proxy:start().
 
 wait_all_replica_started(Node, Owners, MyRing) ->

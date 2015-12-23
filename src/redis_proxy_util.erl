@@ -10,7 +10,7 @@
 -author("zy").
 
 %% API
--export([file_exists/1, wait_for_file/3, wait_for_file_deleted/3, select_one_random_node/1, generate_apl/1]).
+-export([file_exists/1, wait_for_file/3, wait_for_file_deleted/3, select_one_random_node/1, generate_apl/1, redis_pool_name/2]).
 
 file_exists(Filepath) ->
     case filelib:last_modified(filename:absname(Filepath)) of
@@ -74,3 +74,9 @@ generate_apl([Node | Rest], Count, APL) ->
         false ->
             generate_apl(Rest, Count + 1, APL)
     end.
+
+redis_pool_name(Index, GroupIndex) ->
+    IndexBin = integer_to_binary(Index),
+    GroupIndexBin = integer_to_binary(GroupIndex),
+    AllBin = <<$r,$e,$d,$i,$s,$_,$p,$r,$o,$x,$y,$_,$r,$e,$d,$i,$s,$_,$p,$o,$o,$l,$_, IndexBin/binary, $_, GroupIndexBin/binary>>,
+    binary_to_atom(AllBin, latin1).
