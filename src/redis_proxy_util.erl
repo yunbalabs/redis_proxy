@@ -35,7 +35,7 @@ wait_for_file_deleted(File, Msec, Attempts) when Attempts > 0 ->
     case file_exists(File) of
         true->
             timer:sleep(Msec),
-            wait_for_file(File, Msec, Attempts - 1);
+            wait_for_file_deleted(File, Msec, Attempts - 1);
         false ->
             ok
     end;

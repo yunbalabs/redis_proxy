@@ -23,7 +23,6 @@ start_application() ->
     ok = lager:start(),
     ok = application:ensure_started(clique),
     ok = distributed_proxy:start(),
-    ok = application:ensure_started(hierdis),
     ok = application:ensure_started(ranch),
     redis_proxy:start().
 

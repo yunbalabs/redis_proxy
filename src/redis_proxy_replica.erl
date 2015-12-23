@@ -22,8 +22,8 @@
 
 init(Index, GroupIndex) ->
     case start_redis(Index, GroupIndex) of
-        {ok, RedisUnixSocketFile, RedisPort} ->
-            case connect_redis(RedisUnixSocketFile) of
+        {ok, _RedisUnixSocketFile, RedisPort} ->
+            case connect_redis(RedisPort) of
                 {ok, RedisContext} ->
                     {ok, #state{
                         index = Index, group_index = GroupIndex,
@@ -40,11 +40,11 @@ init(Index, GroupIndex) ->
     end.
 
 check_warnup_state(State = #state{index = Index, redis_context = RedisContext, warnup_state = loading}) ->
-    case hierdis:command(RedisContext, ["PING"]) of
+    case eredis:q(RedisContext, ["PING"]) of
         {ok, <<"PONG">>} ->
             case get_available_replica(Index) of
                 {ok, ReplicaPid, ReplicaHost, ReplicaPort} ->
-                    case hierdis:command(RedisContext, ["SLAVEOF", ReplicaHost, ReplicaPort]) of
+                    case eredis:q(RedisContext, ["SLAVEOF", ReplicaHost, ReplicaPort]) of
                         {ok, <<"OK">>} ->
                             %% TODO: make sure slaveof started
                             {ok, warnup, State#state{warnup_state = slaveof, slaveof_replica = ReplicaPid}};
@@ -65,7 +65,7 @@ check_warnup_state(State = #state{redis_context = RedisContext, slaveof_replica 
             refuse_request(SlaveofReplica),
             {ok, warnup, State};
         finished ->
-            case hierdis:command(RedisContext, ["SLAVEOF", "NO", "ONE"]) of
+            case eredis:q(RedisContext, ["SLAVEOF", "NO", "ONE"]) of
                 {ok, <<"OK">>} ->
                     {ok, up, State#state{warnup_state = finished}};
                 _ ->
@@ -87,15 +87,15 @@ actived(State = #state{slaveof_replica = SlaveofReplica}) ->
 handle_request(Request, Sender, State = #state{redis_context = RedisContext}) ->
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
     %% TODO: handle connection lost
-    Result = hierdis:command(RedisContext, Request),
+    Result = eredis:q(RedisContext, Request),
     {reply, Result, State}.
 
 terminate(_Reason, #state{redis_context = RedisContext}) ->
-    hierdis:command(RedisContext, [<<"SHUTDOWN">>]),
+    eredis:q(RedisContext, [<<"SHUTDOWN">>]),
     ok.
 
 get_slaveof_state(#state{redis_context = RedisContext}) ->
-    case hierdis:command(RedisContext, ["INFO"]) of
+    case eredis:q(RedisContext, ["INFO"]) of
         {ok, InfoData} ->
             %% TODO: handle error
             [_, ReplicationInfo] = binary:split(InfoData, <<"\r\n# Replication">>),
@@ -159,9 +159,8 @@ start_redis(Index, GroupIndex) ->
             {error, Reason1}
     end.
 
-connect_redis(RedisUnixSocketFile) ->
-    %% TODO: replace hierdis with eredis
-    case hierdis:connect_unix(RedisUnixSocketFile) of
+connect_redis(RedisPort) ->
+    case eredis:start_link("127.0.0.1", list_to_integer(RedisPort)) of
         {ok, Context} ->
             {ok, Context};
         {error, Reason} ->
