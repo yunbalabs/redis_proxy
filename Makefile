@@ -22,5 +22,5 @@ stop:
 clean:
 	${REBAR} clean
 
-test:
-	cd test && ./generate_config.sh && ./run.erl && ./gc.sh
+test: compile
+	cd test && ./run.sh

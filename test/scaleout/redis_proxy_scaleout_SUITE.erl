@@ -1,6 +1,6 @@
 %% common_test suite for redis_proxy_replica
 
--module(redis_proxy_replica_SUITE).
+-module(redis_proxy_scaleout_SUITE).
 -include_lib("common_test/include/ct.hrl").
 
 -compile(export_all).
@@ -45,7 +45,7 @@ all() ->
 groups() ->
     [
         {responser, [], [wait_for_messages]},
-        {requester, [sequence], [join_cluster, test_slaveof_without_data, test_slaveof_with_data, test_finished]}
+        {requester, [sequence], [test_put_data, join_cluster, test_checkout_data, test_finished]}
     ].
 
 %%--------------------------------------------------------------------
@@ -63,26 +63,15 @@ groups() ->
 %% variable, but should NOT alter/remove any existing entries.
 %%--------------------------------------------------------------------
 init_per_suite(Config) ->
-    ok = filelib:ensure_dir("priv/redis/"),
-    RedisConfPath = ct:get_config(redis_conf_path),
-    {ok, _} = file:copy(RedisConfPath, "priv/redis/redis.conf"),
-    RedisServerPath = ct:get_config(redis_server_path),
-    {ok, _} = file:copy(RedisServerPath, "priv/redis/redis-server"),
-    ok = file:change_mode("priv/redis/redis-server", 8#00755),
-
-    ok = lager:start(),
-    ok = application:ensure_started(clique),
-    ok = distributed_proxy:start(),
-    ok = application:ensure_started(hierdis),
-    ok = application:ensure_started(ranch),
-    ok = redis_proxy:start(),
+    ok = redis_proxy_test_util:start_application(),
     {ok, MyRing} = distributed_proxy_ring_manager:get_ring(),
     Owners = distributed_proxy_ring:get_owners(MyRing),
-    wait_replica_started(node(), Owners),
+    redis_proxy_test_util:wait_all_replica_started(node(), Owners, MyRing),
 
     MasterNode = ct:get_config(master_node),
     DataSize = ct:get_config(data_size),
-    [{data_size, DataSize}, {master_node, MasterNode} | Config].
+    RedisPort = redis_proxy_config:redis_port(),
+    [{data_size, DataSize}, {master_node, MasterNode}, {redis_port, RedisPort} | Config].
 
 %%--------------------------------------------------------------------
 %% Function: end_per_suite(Config0) -> void() | {save_config,Config1}
@@ -136,53 +125,36 @@ wait_for_messages(Config) ->
 
 wait_for_message(Config) ->
     receive
-        {write_data, {Idx, GroupIndex}, Sender} ->
-            {ok, ReplicaPid} = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex}),
-            lists:foreach(
-                fun (Key) ->
-                    distributed_proxy_message:send(ReplicaPid, ["SET", integer_to_list(Key), "test"]),
-                    {ok, <<"OK">>} = distributed_proxy_message:recv()
-                end, lists:seq(1, ?config(data_size, Config))),
-            Sender ! done,
+        {join_me, Node, Sender} ->
+            ok = distributed_proxy:join_cluster(Node),
+            Sender ! ok,
             wait_for_message(Config);
         close ->
             ok
     end.
 
-join_cluster(Config) ->
-    {ok, MyRing} = distributed_proxy_ring_manager:get_ring(),
-    Owners = distributed_proxy_ring:get_owners(MyRing),
-    [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
-    wait_replica_started(AnotherNode, Owners),
-
-    [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
-    ok = distributed_proxy:join_cluster(AnotherNode),
-    wait_replica_started(node(), Owners).
-
-test_slaveof_without_data(_Config) ->
-    Idx = 0,
-    GroupIndex = 2,
-    {ok, ReplicaPid} = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex}),
-    exit(ReplicaPid, kill),
-    wait_replica_started(node(), [{Idx, undefined}]).
-
-test_slaveof_with_data(Config) ->
-    Idx = 0,
-    GroupIndex = 1,
-    [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
-    erlang:send({?MODULE, AnotherNode}, {write_data, {Idx, GroupIndex}, self()}),
-    receive done -> ok end,
-
-    GroupIndex2 = 2,
-    {ok, ReplicaPid} = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex2}),
-    exit(ReplicaPid, kill),
-    wait_replica_started(node(), [{Idx, undefined}]),
-    {ok, ReplicaPid2} = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex2}),
+test_put_data(Config) ->
+    {ok, C} = eredis:start_link("127.0.0.1", ?config(redis_port, Config)),
     lists:foreach(
         fun (Key) ->
-            distributed_proxy_message:send(ReplicaPid2, ["GET", integer_to_list(Key)]),
-            {ok, <<"test">>} = distributed_proxy_message:recv()
+            {ok, <<"OK">>} = eredis:q(C, ["SET", integer_to_list(Key), "test"])
         end, lists:seq(1, ?config(data_size, Config))),
+    eredis:stop(C),
+    ok.
+
+join_cluster(Config) ->
+    [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
+    erlang:send({?MODULE, AnotherNode}, {join_me, node(), self()}),
+    receive ok -> true end.
+
+test_checkout_data(Config) ->
+    wait_reconciling(),
+    {ok, C} = eredis:start_link("127.0.0.1", ?config(redis_port, Config)),
+    lists:foreach(
+        fun (Key) ->
+            {ok, <<"test">>} = eredis:q(C, ["GET", integer_to_list(Key)])
+        end, lists:seq(1, ?config(data_size, Config))),
+    eredis:stop(C),
     true.
 
 test_finished(Config) ->
@@ -190,39 +162,12 @@ test_finished(Config) ->
     erlang:send({?MODULE, AnotherNode}, close),
     true.
 
-wait_replica_started(Node, Owners) ->
-    ActiveFun =
-        fun (Idx, GroupIndex) ->
-            case distributed_proxy_util:safe_rpc(Node, distributed_proxy_replica_manager, get_replica_pid, [{Idx, GroupIndex}], 3000) of
-                {badrpc, _} -> true;
-                {ok, Pid} ->
-                    case catch sys:get_status(Pid, 3000) of
-                        {status, _, _, [_, _, _, _, [_, {data, State} | _]]} ->
-                            case lists:keyfind("StateName", 1, State) of
-                                {"StateName", active} ->
-                                    false;
-                                {"StateName", _} ->
-                                    true;
-                                false ->
-                                    true
-                            end;
-                        _Error ->
-                            true
-                    end;
-                not_found ->
-                    true
-            end
-        end,
-
-    NotActived = lists:filter(
-        fun({Idx, _GroupId}) ->
-            Ret1 = ActiveFun(Idx, 1),
-            Ret2 = ActiveFun(Idx, 2),
-            Ret1 andalso Ret2
-        end, Owners),
-    case NotActived of
+wait_reconciling() ->
+    {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
+    case distributed_proxy_ring:get_all_changes(Ring) of
         [] ->
-            true;
+            ok;
         _ ->
-            wait_replica_started(Node, NotActived)
+            timer:sleep(100),
+            wait_reconciling()
     end.

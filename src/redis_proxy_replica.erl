@@ -146,6 +146,7 @@ start_redis(Index, GroupIndex) ->
     end.
 
 connect_redis(RedisUnixSocketFile) ->
+    %% TODO: replace hierdis with eredis
     case hierdis:connect_unix(RedisUnixSocketFile) of
         {ok, Context} ->
             {ok, Context};

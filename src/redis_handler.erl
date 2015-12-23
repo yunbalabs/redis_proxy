@@ -40,8 +40,10 @@ handle_redis(Connection, Action, State) ->
                 {error, Reason} ->
                     ok = reply(Connection, {error, Reason})
             end;
+        {ok, c, Command} ->
+            handle_control_command(Connection, Command);
         {ok, _Type, _Command} ->
-            ok = reply(Connection, {error, <<"Not implemented">>});
+            ok = reply(Connection, {error, <<"ERR not implemented">>});
         {error, Reason} ->
             ok = reply(Connection, {error, Reason})
     end,
@@ -67,7 +69,7 @@ parse_command(Command, #state{command_type_dict = CommandTypes}) when length(Com
     Name = string:to_lower(binary_to_list(NameBin)),
     case dict:find(Name, CommandTypes) of
         {ok, Type} ->
-            {ok, Type, Command};
+            {ok, Type, Name};
         error ->
             {error, <<"ERR unknown command '", NameBin/binary, "'">>}
     end;
@@ -85,15 +87,15 @@ request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForw
             {ok, Response};
         false ->
             case redis_proxy_util:select_one_random_node(Nodes) of
+                none ->
+                    {error, <<"ERR all replicas unavailable">>};
                 Node when EnableReadForward =:= true ->
                     GroupIndex = distributed_proxy_util:index_of(Node, Nodes),
                     Response = request_replica([{GroupIndex, Node}], Idx, Command, 0),
                     {ok, Response};
                 Node when EnableReadForward =:= false ->
                     NodeBin = list_to_binary(atom_to_list(Node)),
-                    {ok, [{forward, << "MOVED ", KeyBin/binary, " ", NodeBin/binary >>}]};
-                none ->
-                    {error, <<"Unavailable">>}
+                    {ok, [{forward, << "MOVED ", KeyBin/binary, " ", NodeBin/binary >>}]}
             end
     end;
 request_replicas(w, KeyBin, Command, _State) ->
@@ -124,6 +126,9 @@ parse_response(w, Command, Results, _State) ->
 reply(Connection, Response) ->
     redis_protocol:answer(Connection, Response).
 
+handle_control_command(Connection, _Command) ->
+    ok = reply(Connection, {error, <<"ERR not implemented">>}).
+
 request_replica([], _Index, _Command, RequestNum) ->
     wait_for_response([], RequestNum);
 request_replica([{GroupIndex, Node} | Rest], Index, Command, RequestNum) ->
@@ -152,4 +157,5 @@ write_response_success([{ok, <<"OK">>} | Rest], TmpUnaibleCount) ->
 write_response_success([{error, temporarily_unavailable} | Rest], TmpUnaibleCount) ->
     write_response_success(Rest, TmpUnaibleCount - 1);
 write_response_success([{error, Reason} | _Rest], _TmpUnaibleCount) ->
+    lager:error("write_response error ~p", [Reason]),
     {error, Reason}.

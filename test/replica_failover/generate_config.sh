@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 TESTDIR="$PWD"
-ROOT=`dirname ${TESTDIR}`
+ROOT=`dirname $(dirname ${TESTDIR})`
 HOSTNAME=`hostname`
 
 generate_spec() {
@@ -10,11 +10,11 @@ generate_spec() {
 
 	echo "{alias, test_dir, \"./\"}." >> spec
 
-	echo "{init, [a], [{node_start, [{monitor_master, true}, {kill_if_fail, true}, {erl_flags, \"-config ${TESTDIR}/app.config -pa ${ROOT}/ebin -pa ${ROOT}/deps/*/ebin\"}]}]}." >> spec
-	echo "{init, [b], [{node_start, [{monitor_master, true}, {kill_if_fail, true}, {erl_flags, \"-config ${TESTDIR}/app2.config -pa ${ROOT}/ebin -pa ${ROOT}/deps/*/ebin\"}]}]}." >> spec
+	echo "{init, [a], [{node_start, [{monitor_master, true}, {kill_if_fail, true}, {erl_flags, \"-config ${TESTDIR}/replica1.config -pa ${ROOT}/ebin -pa ${ROOT}/deps/*/ebin -pa ${ROOT}/test/ebin\"}]}]}." >> spec
+	echo "{init, [b], [{node_start, [{monitor_master, true}, {kill_if_fail, true}, {erl_flags, \"-config ${TESTDIR}/replica2.config -pa ${ROOT}/ebin -pa ${ROOT}/deps/*/ebin -pa ${ROOT}/test/ebin\"}]}]}." >> spec
 
-	echo "{logdir, master, \"./logs/\"}." >> spec
-	echo "{logdir, \"./logs/\"}." >> spec
+	echo "{logdir, master, \"../logs/\"}." >> spec
+	echo "{logdir, \"../logs/\"}." >> spec
 
 	echo "{config, \"${TESTDIR}/test.config\"}." >> spec
 
@@ -29,8 +29,6 @@ generate_config() {
 	echo "{redis_conf_path, \"${ROOT}/priv/redis/redis.conf\"}." >> test.config
 	echo "{redis_server_path, \"${ROOT}/priv/redis/redis-server\"}." >> test.config
 }
-
-mkdir -p logs
 
 [ -f spec ] && rm spec
 generate_spec
