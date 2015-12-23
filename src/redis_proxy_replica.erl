@@ -17,6 +17,7 @@
 -define(DATA_DIR, "data/redis").
 -define(REDIS_SERVER_PATH, "priv/redis/redis-server").
 -define(REDIS_CONFIG_PATH, "priv/redis/redis.conf").
+-define(REDIS_CLOSE_SCRIPT, "priv/redis/close_redis.sh").
 -define(DEFAULT_SLAVE_OFFSET_THRESHOLD, 100).
 
 init(Index, GroupIndex) ->
@@ -125,12 +126,14 @@ start_redis(Index, GroupIndex) ->
     RedisUnixSocketFile = lists:flatten(io_lib:format("/tmp/redis.proxy.unixsocket.~s.~w_~w", [node(), Index, GroupIndex])),
     RedisExecutable = filename:absname(?REDIS_SERVER_PATH),
     RedisConfigFile = filename:absname(?REDIS_CONFIG_PATH),
+    RedisCloseScript = filename:absname(?REDIS_CLOSE_SCRIPT),
+    RedisPidFile = filename:absname(lists:flatten(io_lib:format("~sredis.pid", [RedisDataDir]))),
 
     ok = filelib:ensure_dir(RedisDataDir),
 
-    Clean = case redis_proxy_util:file_exists(RedisUnixSocketFile) of
+    Clean = case redis_proxy_util:file_exists(RedisPidFile) of
         true ->
-            case try_stop_redis(RedisUnixSocketFile) of
+            case try_stop_redis(RedisCloseScript, RedisPidFile) of
                 ok ->
                     ok;
                 {error, Reason} ->
@@ -233,16 +236,12 @@ try_start_redis(Executable, ConfigFile, UnixSocketFile, DataDir, TryTimes) ->
             {error, Reason}
     end.
 
-try_stop_redis(RedisUnixSocketFile) ->
-    case connect_redis(RedisUnixSocketFile) of
-        {ok, RedisContext} ->
-            hierdis:command(RedisContext, [<<"SHUTDOWN">>]),
-            case redis_proxy_util:wait_for_file_deleted(RedisUnixSocketFile, 100, 50) of
-                ok ->
-                    ok;
-                timeout ->
-                    {error, timeout}
-            end;
-        {error, Reason} ->
-            {error, Reason}
+try_stop_redis(RedisCloseScript, RedisPidFile) ->
+    Args = [RedisPidFile],
+    erlang:open_port({spawn_executable, [RedisCloseScript]}, [{args, Args}]),
+    case redis_proxy_util:wait_for_file_deleted(RedisPidFile, 100, 50) of
+        ok ->
+            ok;
+        timeout ->
+            {error, timeout}
     end.
