@@ -83,7 +83,7 @@ request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForw
     case lists:member(node(), Nodes) of
         true ->
             GroupIndex = distributed_proxy_util:index_of(node(), Nodes),
-            Response = request_replica([{GroupIndex, node()}], Idx, Command, 0),
+            Response = request_replica([{GroupIndex, node()}], Idx, Command),
             {ok, Response};
         false ->
             case redis_proxy_util:select_one_random_node(Nodes) of
@@ -91,7 +91,7 @@ request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForw
                     {error, <<"ERR all replicas unavailable">>};
                 Node when EnableReadForward =:= true ->
                     GroupIndex = distributed_proxy_util:index_of(Node, Nodes),
-                    Response = request_replica([{GroupIndex, Node}], Idx, Command, 0),
+                    Response = request_replica([{GroupIndex, Node}], Idx, Command),
                     {ok, Response};
                 Node when EnableReadForward =:= false ->
                     NodeBin = list_to_binary(atom_to_list(Node)),
@@ -103,7 +103,7 @@ request_replicas(w, KeyBin, Command, _State) ->
     {Idx, Pos, _GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
     Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
     RequestNodes = redis_proxy_util:generate_apl(Nodes),
-    Response = request_replica(RequestNodes, Idx, Command, 0),
+    Response = request_replica(RequestNodes, Idx, Command),
     {ok, Response}.
 
 parse_response(r, _Command, [{ok, Result}], _State) ->
@@ -129,24 +129,21 @@ reply(Connection, Response) ->
 handle_control_command(Connection, _Command) ->
     ok = reply(Connection, {error, <<"ERR not implemented">>}).
 
-request_replica([], _Index, _Command, RequestNum) ->
-    wait_for_response([], RequestNum);
-request_replica([{GroupIndex, Node} | Rest], Index, Command, RequestNum) ->
-    Proxy = distributed_proxy_util:replica_proxy_reg_name(list_to_binary(lists:flatten(io_lib:format("~w_~w", [Index, GroupIndex])))),
-    distributed_proxy_message:send({Proxy, Node}, Command),
-    request_replica(Rest, Index, Command, RequestNum + 1).
-
-wait_for_response(Responses, 0) ->
-    Responses;
-wait_for_response(Responses, RequestNum) ->
-    case distributed_proxy_message:recv() of
-        {temporarily_unavailable, _} ->
-            wait_for_response([{error, temporarily_unavailable} | Responses], RequestNum - 1);
-        {error, Reason} ->
-            wait_for_response([{error, Reason} | Responses], RequestNum - 1);
-        {ok, Result} ->
-            wait_for_response([{ok, Result} | Responses], RequestNum - 1)
-    end.
+request_replica(RequestNodes, Index, Command) ->
+    RequestFun =
+        fun({GroupIndex, Node}) ->
+            Proxy = distributed_proxy_util:replica_proxy_reg_name(list_to_binary(lists:flatten(io_lib:format("~w_~w", [Index, GroupIndex])))),
+            distributed_proxy_message:send({Proxy, Node}, Command),
+            case distributed_proxy_message:recv() of
+                {temporarily_unavailable, _} ->
+                    {error, temporarily_unavailable};
+                {error, Reason} ->
+                    {error, Reason};
+                {ok, Result} ->
+                    {ok, Result}
+            end
+        end,
+    distributed_proxy_util:pmap(RequestFun, RequestNodes, length(RequestNodes)).
 
 write_response_success([], 0) ->
     {error, all_replicas_unavailable};
