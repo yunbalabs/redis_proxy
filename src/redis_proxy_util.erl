@@ -10,7 +10,7 @@
 -author("zy").
 
 %% API
--export([file_exists/1, wait_for_file/3, select_one_random_node/1, generate_apl/1]).
+-export([file_exists/1, wait_for_file/3, wait_for_file_deleted/3, select_one_random_node/1, generate_apl/1]).
 
 file_exists(Filepath) ->
     case filelib:last_modified(filename:absname(Filepath)) of
@@ -30,6 +30,17 @@ wait_for_file(File, Msec, Attempts) when Attempts > 0 ->
     end;
 wait_for_file(_File, _Msec, Attempts) when Attempts =< 0 ->
     not_found.
+
+wait_for_file_deleted(File, Msec, Attempts) when Attempts > 0 ->
+    case file_exists(File) of
+        true->
+            timer:sleep(Msec),
+            wait_for_file(File, Msec, Attempts - 1);
+        false ->
+            ok
+    end;
+wait_for_file_deleted(_File, _Msec, Attempts) when Attempts =< 0 ->
+    timeout.
 
 select_one_random_node([]) ->
     none;

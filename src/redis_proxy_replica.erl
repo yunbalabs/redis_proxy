@@ -127,22 +127,33 @@ start_redis(Index, GroupIndex) ->
     RedisConfigFile = filename:absname(?REDIS_CONFIG_PATH),
 
     ok = filelib:ensure_dir(RedisDataDir),
-    ok = case redis_proxy_util:file_exists(RedisUnixSocketFile) of
+
+    Clean = case redis_proxy_util:file_exists(RedisUnixSocketFile) of
         true ->
-            try_stop_redis(RedisUnixSocketFile),
-            file:delete(RedisUnixSocketFile),
-            ok;
+            case try_stop_redis(RedisUnixSocketFile) of
+                ok ->
+                    ok;
+                {error, Reason} ->
+                    lager:error("stop old redis failed: ~p", [Reason]),
+                    {error, try_stop_redis_failed}
+            end;
         _ ->
             ok
     end,
 
-    %% TODO: backup data files
+    case Clean of
+        ok ->
+            %% TODO: backup data files
 
-    case try_start_redis(RedisExecutable, RedisConfigFile, RedisUnixSocketFile, RedisDataDir, 50) of
-        {ok, Port} ->
-            {ok, RedisUnixSocketFile, Port};
-        {error, Reason} ->
-            {error, Reason}
+            case try_start_redis(RedisExecutable, RedisConfigFile, RedisUnixSocketFile, RedisDataDir, 50) of
+                {ok, Port} ->
+                    {ok, RedisUnixSocketFile, Port};
+                {error, Reason2} ->
+                    lager:error("start redis failed: ~p", [Reason2]),
+                    {error, try_start_redis_failed}
+            end;
+        {error, Reason1} ->
+            {error, Reason1}
     end.
 
 connect_redis(RedisUnixSocketFile) ->
@@ -225,7 +236,13 @@ try_start_redis(Executable, ConfigFile, UnixSocketFile, DataDir, TryTimes) ->
 try_stop_redis(RedisUnixSocketFile) ->
     case connect_redis(RedisUnixSocketFile) of
         {ok, RedisContext} ->
-            hierdis:command(RedisContext, [<<"SHUTDOWN">>]);
+            hierdis:command(RedisContext, [<<"SHUTDOWN">>]),
+            case redis_proxy_util:wait_for_file_deleted(RedisUnixSocketFile, 100, 50) of
+                ok ->
+                    ok;
+                timeout ->
+                    {error, timeout}
+            end;
         {error, Reason} ->
             {error, Reason}
     end.
