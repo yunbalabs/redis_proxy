@@ -28,6 +28,7 @@ generate_config() {
 
 	echo "{redis_conf_path, \"${ROOT}/priv/redis/redis.conf\"}." >> test.config
 	echo "{redis_server_path, \"${ROOT}/priv/redis/redis-server\"}." >> test.config
+	echo "{redis_close_script_path, \"${ROOT}/priv/redis/close_redis.sh\"}." >> test.config
 }
 
 mkdir -p logs

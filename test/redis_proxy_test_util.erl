@@ -19,6 +19,9 @@ start_application() ->
     RedisServerPath = ct:get_config(redis_server_path),
     {ok, _} = file:copy(RedisServerPath, "priv/redis/redis-server"),
     ok = file:change_mode("priv/redis/redis-server", 8#00755),
+    RedisCloseScriptPath = ct:get_config(redis_close_script_path),
+    {ok, _} = file:copy(RedisCloseScriptPath, "priv/redis/close_redis.sh"),
+    ok = file:change_mode("priv/redis/close_redis.sh", 8#00755),
 
     ok = lager:start(),
     ok = application:ensure_started(clique),
