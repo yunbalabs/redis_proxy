@@ -170,6 +170,7 @@ start_redis(Index, GroupIndex) ->
     end.
 
 connect_redis(Index, GroupIndex, RedisPort) ->
+    %% TODO: option for choose eredis or eredis_pool
     RedisPoolName = redis_proxy_util:redis_pool_name(Index, GroupIndex),
     RedisPoolSize = redis_proxy_config:redis_pool_size(),
     RedisPoolMaxOverflow = redis_proxy_config:redis_pool_max_overflow(),
