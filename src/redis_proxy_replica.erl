@@ -176,7 +176,7 @@ connect_redis(Index, GroupIndex, RedisPort) ->
     case eredis_pool:create_pool(RedisPoolName, {RedisPoolSize, RedisPoolMaxOverflow}, "127.0.0.1", list_to_integer(RedisPort)) of
         {ok, Context} ->
             {ok, Context};
-        {error,{already_started, Context}} ->
+        {error,{already_started, _Context}} ->
             eredis_pool:delete_pool(RedisPoolName),
             connect_redis(Index, GroupIndex, RedisPort);
         {error, Reason} ->

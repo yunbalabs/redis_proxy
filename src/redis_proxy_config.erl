@@ -14,8 +14,8 @@
 
 -define(DEFAULT_REDIS_PORT, 6379).
 -define(ENABLE_READ_FORWARD, true).
--define(DEFAULT_REDIS_POOL_SIZE, 10).
--define(DEFAULT_REDIS_POOL_MAX_OVERFLOW, 20).
+-define(DEFAULT_REDIS_POOL_SIZE, 100).
+-define(DEFAULT_REDIS_POOL_MAX_OVERFLOW, 40).
 
 redis_port() ->
     {ok, App}  = application:get_application(?MODULE),
