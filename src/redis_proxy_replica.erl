@@ -116,12 +116,12 @@ handle_request(Request, Sender, State = #state{redis_client = eredis_pool, redis
     {noreply, State}.
 
 terminate(_Reason, #state{redis_client = eredis, redis_context = RedisContext, close_script = RedisCloseScript, pid_file = RedisPidFile}) ->
-    try_stop_redis(RedisCloseScript, RedisPidFile, false),
     catch eredis:stop(RedisContext),
+    try_stop_redis(RedisCloseScript, RedisPidFile, false),
     ok;
 terminate(_Reason, #state{redis_client = eredis_pool, redis_context = RedisContext, close_script = RedisCloseScript, pid_file = RedisPidFile}) ->
-    try_stop_redis(RedisCloseScript, RedisPidFile, false),
     catch eredis_pool:delete_pool(RedisContext),
+    try_stop_redis(RedisCloseScript, RedisPidFile, false),
     ok.
 
 get_slaveof_state(#state{redis_context = RedisContext, redis_client = RedisClientModule}) ->
@@ -260,17 +260,12 @@ try_start_redis(Executable, ConfigFile, UnixSocketFile, DataDir, TryTimes) ->
     ListenPort = integer_to_list(10000 + random:uniform(50000)),
 
     Args = [ConfigFile, "--unixsocket", UnixSocketFile, "--daemonize", "yes", "--port", ListenPort],
-    Port = erlang:open_port({spawn_executable, [Executable]}, [{args, Args}, {cd, filename:absname(DataDir)}]),
-    receive
-        {'EXIT', Port, normal} ->
-            case redis_proxy_util:wait_for_file(UnixSocketFile, 100, 50) of
-                ok ->
-                    {ok, ListenPort};
-                not_found ->
-                    try_start_redis(Executable, ConfigFile, UnixSocketFile, DataDir, TryTimes - 1)
-            end;
-        {'EXIT', Port, Reason} ->
-            {error, Reason}
+    erlang:open_port({spawn_executable, [Executable]}, [{args, Args}, {cd, filename:absname(DataDir)}]),
+    case redis_proxy_util:wait_for_file(UnixSocketFile, 100, 50) of
+        ok ->
+            {ok, ListenPort};
+        not_found ->
+            try_start_redis(Executable, ConfigFile, UnixSocketFile, DataDir, TryTimes - 1)
     end.
 
 try_stop_redis(RedisCloseScript, RedisPidFile, false) ->
