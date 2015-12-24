@@ -81,7 +81,7 @@ handle_key_command(Connection, Type, KeyBin, Command, State, TryTimes, TriedNode
                 {error, Reason} ->
                     ok = reply(Connection, {error, Reason});
                 try_again ->
-                    handle_key_command(Connection, Type, KeyBin, Command, State, TryTimes + 1, [RequestNodes | TriedNodes])
+                    handle_key_command(Connection, Type, KeyBin, Command, State, TryTimes + 1, lists:append(RequestNodes, TriedNodes))
             end;
         {error, Reason} ->
             ok = reply(Connection, {error, Reason})
