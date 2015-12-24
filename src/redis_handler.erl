@@ -94,22 +94,23 @@ request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForw
     {Idx, Nodes} = redis_proxy_util:locate_key(KeyBin),
     AvailableNodes = Nodes -- TriedNodes,
     LocalNode = node(),
-    case distributed_proxy_util:index_of(LocalNode, AvailableNodes) of
-        not_found ->
+    case lists:member(LocalNode, AvailableNodes) of
+        true ->
+            GroupIndex = distributed_proxy_util:index_of(LocalNode, Nodes),
+            Response = request_replica([{GroupIndex, LocalNode}], Idx, Command),
+            {ok, [LocalNode], Response};
+        false ->
             case redis_proxy_util:select_one_random_node(AvailableNodes) of
                 none ->
                     {error, <<"ERR all replicas are unavailable">>};
                 Node when EnableReadForward =:= true ->
-                    GroupIndex = distributed_proxy_util:index_of(Node, AvailableNodes),
+                    GroupIndex = distributed_proxy_util:index_of(Node, Nodes),
                     Response = request_replica([{GroupIndex, Node}], Idx, Command),
                     {ok, [Node], Response};
                 Node when EnableReadForward =:= false ->
                     NodeBin = list_to_binary(atom_to_list(Node)),
                     {ok, [Node], [{forward, << "MOVED ", KeyBin/binary, " ", NodeBin/binary >>}]}
-            end;
-        GroupIndex ->
-            Response = request_replica([{GroupIndex, node()}], Idx, Command),
-            {ok, [LocalNode], Response}
+            end
     end;
 request_replicas(w, KeyBin, Command, _State, _TriedNodes) ->
     {Idx, Nodes} = redis_proxy_util:locate_key(KeyBin),
