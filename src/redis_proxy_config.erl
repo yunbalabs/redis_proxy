@@ -10,12 +10,13 @@
 -author("zy").
 
 %% API
--export([redis_port/0, enable_read_forward/0, redis_pool_size/0, redis_pool_max_overflow/0]).
+-export([redis_port/0, enable_read_forward/0, redis_pool_size/0, redis_pool_max_overflow/0, redis_client/0]).
 
 -define(DEFAULT_REDIS_PORT, 6379).
 -define(ENABLE_READ_FORWARD, true).
 -define(DEFAULT_REDIS_POOL_SIZE, 100).
 -define(DEFAULT_REDIS_POOL_MAX_OVERFLOW, 40).
+-define(DEFAULT_REDIS_CLIENT, eredis).
 
 redis_port() ->
     {ok, App}  = application:get_application(?MODULE),
@@ -39,4 +40,12 @@ redis_pool_max_overflow() ->
             ?DEFAULT_REDIS_POOL_MAX_OVERFLOW;
         {ok, App} ->
             application:get_env(App, redis_pool_max_overflow, ?DEFAULT_REDIS_POOL_MAX_OVERFLOW)
+    end.
+
+redis_client() ->
+    case application:get_application(?MODULE) of
+        undefined ->
+            ?DEFAULT_REDIS_CLIENT;
+        {ok, App} ->
+            application:get_env(App, redis_client, ?DEFAULT_REDIS_CLIENT)
     end.

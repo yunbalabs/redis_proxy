@@ -18,7 +18,9 @@
     redis_context,
     redis_host, redis_port,
     slaveof_replica,
-    close_script, pid_file}).
+    close_script, pid_file,
+    redis_client
+}).
 
 -define(DATA_DIR, "data/redis").
 -define(REDIS_SERVER_PATH, "priv/redis/redis-server").
@@ -29,7 +31,8 @@
 init(Index, GroupIndex) ->
     case start_redis(Index, GroupIndex) of
         {ok, RedisPort, RedisCloseScript, RedisPidFile} ->
-            case connect_redis(Index, GroupIndex, RedisPort) of
+            RedisClientModule = redis_proxy_config:redis_client(),
+            case connect_redis(RedisClientModule, Index, GroupIndex, RedisPort) of
                 {ok, RedisContext} ->
                     {ok, #state{
                         index = Index, group_index = GroupIndex,
@@ -37,7 +40,8 @@ init(Index, GroupIndex) ->
                         redis_context = RedisContext,
                         redis_host = net_adm:localhost(), redis_port = RedisPort,
                         slaveof_replica = undefined,
-                        close_script = RedisCloseScript, pid_file = RedisPidFile
+                        close_script = RedisCloseScript, pid_file = RedisPidFile,
+                        redis_client = RedisClientModule
                     }};
                 {error, Reason} ->
                     {error, Reason}
@@ -48,13 +52,14 @@ init(Index, GroupIndex) ->
 
 check_warnup_state(State = #state{
     index = Index, group_index = GroupIndex,
-    redis_context = RedisContext, warnup_state = loading}) ->
-    case eredis_pool:q(RedisContext, ["PING"]) of
+    redis_context = RedisContext, redis_client = RedisClientModule,
+    warnup_state = loading}) ->
+    case RedisClientModule:q(RedisContext, ["PING"]) of
         {ok, <<"PONG">>} ->
             case get_available_replica(Index) of
                 {ok, ReplicaPid, ReplicaHost, ReplicaPort} ->
                     lager:debug("~p ~p slave of ~p:~p", [Index, GroupIndex, ReplicaHost, ReplicaPort]),
-                    case eredis_pool:q(RedisContext, ["SLAVEOF", ReplicaHost, ReplicaPort]) of
+                    case RedisClientModule:q(RedisContext, ["SLAVEOF", ReplicaHost, ReplicaPort]) of
                         {ok, <<"OK">>} ->
                             %% TODO: make sure slaveof started
                             {ok, warnup, State#state{warnup_state = slaveof, slaveof_replica = ReplicaPid}};
@@ -67,7 +72,10 @@ check_warnup_state(State = #state{
         _Else ->
             {ok, warnup, State}
     end;
-check_warnup_state(State = #state{redis_context = RedisContext, slaveof_replica = SlaveofReplica, warnup_state = slaveof}) ->
+check_warnup_state(State = #state{
+    redis_context = RedisContext, slaveof_replica = SlaveofReplica,
+    redis_client = RedisClientModule,
+    warnup_state = slaveof}) ->
     case check_slaveof_state(SlaveofReplica) of
         working ->
             {ok, warnup, State};
@@ -75,7 +83,7 @@ check_warnup_state(State = #state{redis_context = RedisContext, slaveof_replica 
             refuse_request(SlaveofReplica),
             {ok, warnup, State};
         finished ->
-            case eredis_pool:q(RedisContext, ["SLAVEOF", "NO", "ONE"]) of
+            case RedisClientModule:q(RedisContext, ["SLAVEOF", "NO", "ONE"]) of
                 {ok, <<"OK">>} ->
                     {ok, up, State#state{warnup_state = finished}};
                 _ ->
@@ -94,7 +102,11 @@ actived(State = #state{slaveof_replica = SlaveofReplica}) ->
     accept_request(SlaveofReplica),
     {ok, State}.
 
-handle_request(Request, Sender, State = #state{redis_context = RedisContext}) ->
+handle_request(Request, Sender, State = #state{redis_client = eredis, redis_context = RedisContext}) ->
+    lager:debug("receive the request ~p from ~p", [Request, Sender]),
+    Result = eredis:q(RedisContext, Request),
+    {reply, Result, State};
+handle_request(Request, Sender, State = #state{redis_client = eredis_pool, redis_context = RedisContext}) ->
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
     spawn_link(
         fun() ->
@@ -103,15 +115,18 @@ handle_request(Request, Sender, State = #state{redis_context = RedisContext}) ->
         end),
     {noreply, State}.
 
-terminate(_Reason, #state{redis_context = RedisContext, close_script = RedisCloseScript, pid_file = RedisPidFile}) ->
+terminate(_Reason, #state{redis_client = eredis, redis_context = RedisContext, close_script = RedisCloseScript, pid_file = RedisPidFile}) ->
+    try_stop_redis(RedisCloseScript, RedisPidFile, false),
+    catch eredis:stop(RedisContext),
+    ok;
+terminate(_Reason, #state{redis_client = eredis_pool, redis_context = RedisContext, close_script = RedisCloseScript, pid_file = RedisPidFile}) ->
     try_stop_redis(RedisCloseScript, RedisPidFile, false),
     catch eredis_pool:delete_pool(RedisContext),
     ok.
 
-get_slaveof_state(#state{redis_context = RedisContext}) ->
-    case eredis_pool:q(RedisContext, ["INFO"]) of
+get_slaveof_state(#state{redis_context = RedisContext, redis_client = RedisClientModule}) ->
+    case RedisClientModule:q(RedisContext, ["INFO"]) of
         {ok, InfoData} ->
-            %% TODO: handle error
             [_, ReplicationInfo] = binary:split(InfoData, <<"\r\n# Replication">>),
             case binary:split(ReplicationInfo, <<",offset=">>, [trim]) of
                 [_, SlaveOffset] ->
@@ -169,8 +184,14 @@ start_redis(Index, GroupIndex) ->
             {error, Reason1}
     end.
 
-connect_redis(Index, GroupIndex, RedisPort) ->
-    %% TODO: option for choose eredis or eredis_pool
+connect_redis(eredis, _Index, _GroupIndex, RedisPort) ->
+    case eredis:start_link("127.0.0.1", list_to_integer(RedisPort)) of
+        {ok, Context} ->
+            {ok, Context};
+        {error, Reason} ->
+            {error, Reason}
+    end;
+connect_redis(eredis_pool, Index, GroupIndex, RedisPort) ->
     RedisPoolName = redis_proxy_util:redis_pool_name(Index, GroupIndex),
     RedisPoolSize = redis_proxy_config:redis_pool_size(),
     RedisPoolMaxOverflow = redis_proxy_config:redis_pool_max_overflow(),
@@ -179,7 +200,7 @@ connect_redis(Index, GroupIndex, RedisPort) ->
             {ok, Context};
         {error,{already_started, _Context}} ->
             eredis_pool:delete_pool(RedisPoolName),
-            connect_redis(Index, GroupIndex, RedisPort);
+            connect_redis(eredis_pool, Index, GroupIndex, RedisPort);
         {error, Reason} ->
             {error, Reason}
     end.
