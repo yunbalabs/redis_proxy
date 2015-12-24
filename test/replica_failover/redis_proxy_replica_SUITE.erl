@@ -45,7 +45,11 @@ all() ->
 groups() ->
     [
         {responser, [], [wait_for_messages]},
-        {requester, [sequence], [join_cluster, test_slaveof_without_data, test_slaveof_with_data, test_finished]}
+        {requester, [sequence], [
+            join_cluster,
+            test_slaveof_without_data, test_slaveof_with_data, test_finished,
+            test_pause_replica
+        ]}
     ].
 
 %%--------------------------------------------------------------------
@@ -172,10 +176,19 @@ test_slaveof_with_data(Config) ->
         fun (Key) ->
             distributed_proxy_message:send(ReplicaPid2, ["GET", integer_to_list(Key)]),
             {ok, <<"test">>} = distributed_proxy_message:recv()
-        end, lists:seq(1, ?config(data_size, Config))),
-    true.
+        end, lists:seq(1, ?config(data_size, Config))).
 
 test_finished(Config) ->
     [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
-    erlang:send({?MODULE, AnotherNode}, close),
-    true.
+    erlang:send({?MODULE, AnotherNode}, close).
+
+test_pause_replica(_Config) ->
+    Idx = 0,
+    GroupIndex = 2,
+    CheckReplicaInterval = distributed_proxy_config:check_replica_interval(),
+    distributed_proxy_replica_manager:pause_replica(node(), {Idx, GroupIndex}),
+    timer:sleep(2 * CheckReplicaInterval),
+    not_found = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex}),
+    distributed_proxy_replica_manager:resume_replica(node(), {Idx, GroupIndex}),
+    timer:sleep(2 * CheckReplicaInterval),
+    {ok, _} = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex}).
