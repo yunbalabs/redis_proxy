@@ -16,30 +16,22 @@
 
 -record(state, {
     command_type_dict,
-    enable_read_forward
+    enable_read_forward,
+    read_max_try_times
 }).
 
 init([CommandTypes]) ->
     random:seed(os:timestamp()),
     {ok, #state{
         command_type_dict = dict:from_list(CommandTypes),
-        enable_read_forward = redis_proxy_config:enable_read_forward()
+        enable_read_forward = redis_proxy_config:enable_read_forward(),
+        read_max_try_times = redis_proxy_config:read_max_try_times()
     }}.
 
 handle_redis(Connection, Action, State) ->
     case parse_command(Action, State) of
         {ok, Type, KeyBin, Command} ->
-            case request_replicas(Type, KeyBin, Command, State) of
-                {ok, Response} ->
-                    case parse_response(Type, Command, Response, State) of
-                        {ok, Response2} ->
-                            ok = reply(Connection, Response2);
-                        {error, Reason} ->
-                            ok = reply(Connection, {error, Reason})
-                    end;
-                {error, Reason} ->
-                    ok = reply(Connection, {error, Reason})
-            end;
+            handle_key_command(Connection, Type, KeyBin, Command, State, 0, []);
         {ok, c, Command} ->
             handle_control_command(Connection, Command);
         {ok, _Type, _Command} ->
@@ -76,39 +68,60 @@ parse_command(Command, #state{command_type_dict = CommandTypes}) when length(Com
 parse_command(_Command, _State) ->
     {error, <<"ERR invalid command">>}.
 
-request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForward}) ->
-    {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
-    {Idx, Pos, _GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
-    Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
-    case distributed_proxy_util:index_of(node(), Nodes) of
+handle_key_command(Connection, _Type, _KeyBin, _Command,
+        #state{read_max_try_times = MaxTryTimes},
+        TryTimes, _TriedNodes) when TryTimes > MaxTryTimes ->
+    ok = reply(Connection, {error, <<"ERR all replicas are unavailable">>});
+handle_key_command(Connection, Type, KeyBin, Command, State, TryTimes, TriedNodes) ->
+    case request_replicas(Type, KeyBin, Command, State, TriedNodes) of
+        {ok, RequestNodes, Response} ->
+            case parse_response(Type, Command, Response, State) of
+                {ok, Response2} ->
+                    ok = reply(Connection, Response2);
+                {error, Reason} ->
+                    ok = reply(Connection, {error, Reason});
+                try_again ->
+                    handle_key_command(Connection, Type, KeyBin, Command, State, TryTimes + 1, [RequestNodes | TriedNodes])
+            end;
+        {error, Reason} ->
+            ok = reply(Connection, {error, Reason})
+    end.
+
+handle_control_command(Connection, _Command) ->
+    ok = reply(Connection, {error, <<"ERR not implemented">>}).
+
+request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForward}, TriedNodes) ->
+    {Idx, Nodes} = redis_proxy_util:locate_key(KeyBin),
+    AvailableNodes = Nodes -- TriedNodes,
+    LocalNode = node(),
+    case distributed_proxy_util:index_of(LocalNode, AvailableNodes) of
         not_found ->
-            case redis_proxy_util:select_one_random_node(Nodes) of
+            case redis_proxy_util:select_one_random_node(AvailableNodes) of
                 none ->
-                    {error, <<"ERR all replicas unavailable">>};
+                    {error, <<"ERR all replicas are unavailable">>};
                 Node when EnableReadForward =:= true ->
-                    GroupIndex = distributed_proxy_util:index_of(Node, Nodes),
+                    GroupIndex = distributed_proxy_util:index_of(Node, AvailableNodes),
                     Response = request_replica([{GroupIndex, Node}], Idx, Command),
-                    {ok, Response};
+                    {ok, [Node], Response};
                 Node when EnableReadForward =:= false ->
                     NodeBin = list_to_binary(atom_to_list(Node)),
-                    {ok, [{forward, << "MOVED ", KeyBin/binary, " ", NodeBin/binary >>}]}
+                    {ok, [Node], [{forward, << "MOVED ", KeyBin/binary, " ", NodeBin/binary >>}]}
             end;
         GroupIndex ->
             Response = request_replica([{GroupIndex, node()}], Idx, Command),
-            {ok, Response}
+            {ok, [LocalNode], Response}
     end;
-request_replicas(w, KeyBin, Command, _State) ->
-    {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
-    {Idx, Pos, _GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
-    Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
+request_replicas(w, KeyBin, Command, _State, _TriedNodes) ->
+    {Idx, Nodes} = redis_proxy_util:locate_key(KeyBin),
     RequestNodes = redis_proxy_util:generate_apl(Nodes),
     Response = request_replica(RequestNodes, Idx, Command),
-    {ok, Response}.
+    {ok, Nodes, Response}.
 
 parse_response(r, _Command, [{ok, Result}], _State) ->
     {ok, Result};
+parse_response(r, _Command, [{error, temporarily_unavailable}], _State) ->
+    try_again;
 parse_response(r, Command, [{error, Reason}], _State) ->
-    %% TODO: try again when the error is temporarily_unavailable
     lager:error("command ~p error ~p", [Command, Reason]),
     {error, <<"ERR response error">>};
 parse_response(r, _Command, [{forward, Info}], _State) ->
@@ -125,13 +138,11 @@ parse_response(w, Command, Results, _State) ->
 reply(Connection, Response) ->
     redis_protocol:answer(Connection, Response).
 
-handle_control_command(Connection, _Command) ->
-    ok = reply(Connection, {error, <<"ERR not implemented">>}).
-
 request_replica(RequestNodes, Index, Command) ->
+    IndexBin = integer_to_binary(Index),
+
     RequestFun =
         fun({GroupIndex, Node}) ->
-            IndexBin = integer_to_binary(Index),
             GroupIndexBin = integer_to_binary(GroupIndex),
             Proxy = distributed_proxy_util:replica_proxy_reg_name(<<IndexBin/binary, $_, GroupIndexBin/binary>>),
             distributed_proxy_message:send({Proxy, Node}, Command),

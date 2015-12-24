@@ -10,7 +10,10 @@
 -author("zy").
 
 %% API
--export([file_exists/1, wait_for_file/3, wait_for_file_deleted/3, select_one_random_node/1, generate_apl/1, redis_pool_name/2]).
+-export([
+    file_exists/1, wait_for_file/3, wait_for_file_deleted/3,
+    select_one_random_node/1, generate_apl/1, locate_key/1,
+    redis_pool_name/2]).
 
 file_exists(Filepath) ->
     case filelib:last_modified(filename:absname(Filepath)) of
@@ -74,6 +77,12 @@ generate_apl([Node | Rest], Count, APL) ->
         false ->
             generate_apl(Rest, Count + 1, APL)
     end.
+
+locate_key(KeyBin) ->
+    {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
+    {Idx, Pos, _GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
+    Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
+    {Idx, Nodes}.
 
 redis_pool_name(Index, GroupIndex) ->
     IndexBin = integer_to_binary(Index),
