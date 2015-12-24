@@ -126,8 +126,26 @@ case "$1" in
             exit 1
         fi
         ;;
+    pause)
+        if [ $# -eq 3 ]; then
+            ensure_node_running
+            $NODETOOL rpc distributed_proxy_replica_manager pause_replica $2 $3
+        else
+            echo "Usage: $SCRIPT pause <replica_id> <replica_index>"
+            exit 1
+        fi
+        ;;
+    resume)
+        if [ $# -eq 3 ]; then
+            ensure_node_running
+            $NODETOOL rpc distributed_proxy_replica_manager resume_replica $2 $3
+        else
+            echo "Usage: $SCRIPT resume <replica_id> <replica_index>"
+            exit 1
+        fi
+        ;;
     *)
-        echo "Usage: $SCRIPT join | status | replicas | map | replica | config"
+        echo "Usage: $SCRIPT join | status | replicas | map | replica | config | pause | resume"
         exit 1
         ;;
 esac
