@@ -80,12 +80,8 @@ request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForw
     {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
     {Idx, Pos, _GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
     Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
-    case lists:member(node(), Nodes) of
-        true ->
-            GroupIndex = distributed_proxy_util:index_of(node(), Nodes),
-            Response = request_replica([{GroupIndex, node()}], Idx, Command),
-            {ok, Response};
-        false ->
+    case distributed_proxy_util:index_of(node(), Nodes) of
+        not_found ->
             case redis_proxy_util:select_one_random_node(Nodes) of
                 none ->
                     {error, <<"ERR all replicas unavailable">>};
@@ -96,7 +92,10 @@ request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForw
                 Node when EnableReadForward =:= false ->
                     NodeBin = list_to_binary(atom_to_list(Node)),
                     {ok, [{forward, << "MOVED ", KeyBin/binary, " ", NodeBin/binary >>}]}
-            end
+            end;
+        GroupIndex ->
+            Response = request_replica([{GroupIndex, node()}], Idx, Command),
+            {ok, Response}
     end;
 request_replicas(w, KeyBin, Command, _State) ->
     {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
@@ -132,7 +131,9 @@ handle_control_command(Connection, _Command) ->
 request_replica(RequestNodes, Index, Command) ->
     RequestFun =
         fun({GroupIndex, Node}) ->
-            Proxy = distributed_proxy_util:replica_proxy_reg_name(list_to_binary(lists:flatten(io_lib:format("~w_~w", [Index, GroupIndex])))),
+            IndexBin = integer_to_binary(Index),
+            GroupIndexBin = integer_to_binary(GroupIndex),
+            Proxy = distributed_proxy_util:replica_proxy_reg_name(<<IndexBin/binary, $_, GroupIndexBin/binary>>),
             distributed_proxy_message:send({Proxy, Node}, Command),
             case distributed_proxy_message:recv() of
                 {temporarily_unavailable, _} ->
