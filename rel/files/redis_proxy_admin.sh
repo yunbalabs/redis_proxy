@@ -71,7 +71,7 @@ case "$1" in
             exit 1
         fi
         ensure_node_running
-        $NODETOOL rpc distributed_proxy join_cluster "$2"
+        $NODETOOL rpc distributed_proxy_console join_cluster "$2"
         ;;
     status)
         ensure_node_running
@@ -117,10 +117,10 @@ case "$1" in
     config)
         if [ $# -eq 2 ]; then
             ensure_node_running
-            $NODETOOL rpc distributed_proxy_config get $2
+            $NODETOOL rpc distributed_proxy_console get_config $2
         elif [ $# -eq 3 ]; then
             ensure_node_running
-            $NODETOOL rpc distributed_proxy_config set $2 $3
+            $NODETOOL rpc distributed_proxy_console set_config $2 $3
         else
             echo "Usage: $SCRIPT config <name> [<value>]"
             exit 1
@@ -129,7 +129,7 @@ case "$1" in
     pause)
         if [ $# -eq 3 ]; then
             ensure_node_running
-            $NODETOOL rpc distributed_proxy_replica_manager pause_replica $2 $3
+            $NODETOOL rpc distributed_proxy_console pause_replica $2 $3
         else
             echo "Usage: $SCRIPT pause <replica_id> <replica_index>"
             exit 1
@@ -138,7 +138,7 @@ case "$1" in
     resume)
         if [ $# -eq 3 ]; then
             ensure_node_running
-            $NODETOOL rpc distributed_proxy_replica_manager resume_replica $2 $3
+            $NODETOOL rpc distributed_proxy_console resume_replica $2 $3
         else
             echo "Usage: $SCRIPT resume <replica_id> <replica_index>"
             exit 1

@@ -41,7 +41,7 @@ start(Options) ->
 start(Port, Mod, Options) ->
     {ok, _} = ranch:start_listener(
         ?MODULE, 10,
-        ranch_tcp, [{port, Port}],
+        ranch_tcp, [{port, Port}, {max_connections, 50000}],
         ?MODULE, {Mod, Options}),
     ok.
 
