@@ -45,7 +45,7 @@ all() ->
 groups() ->
     [
         {responser, [], [wait_for_messages]},
-        {requester, [sequence], [test_put_data, join_cluster, test_checkout_data, test_finished]}
+        {requester, [sequence], [test_put_data, a_join_cluster, test_checkout_data, c_join_cluster, test_finished]}
     ].
 
 %%--------------------------------------------------------------------
@@ -68,10 +68,9 @@ init_per_suite(Config) ->
     Owners = distributed_proxy_ring:get_owners(MyRing),
     redis_proxy_test_util:wait_all_replica_started(node(), Owners, MyRing),
 
-    MasterNode = ct:get_config(master_node),
     DataSize = ct:get_config(data_size),
     RedisPort = redis_proxy_config:redis_port(),
-    [{data_size, DataSize}, {master_node, MasterNode}, {redis_port, RedisPort} | Config].
+    [{data_size, DataSize}, {redis_port, RedisPort} | Config].
 
 %%--------------------------------------------------------------------
 %% Function: end_per_suite(Config0) -> void() | {save_config,Config1}
@@ -126,8 +125,8 @@ wait_for_messages(Config) ->
 wait_for_message(Config) ->
     receive
         {join_me, Node, Sender} ->
-            ok = distributed_proxy:join_cluster(Node),
-            Sender ! ok,
+            Result = distributed_proxy:join_cluster(Node),
+            Sender ! Result,
             wait_for_message(Config);
         close ->
             ok
@@ -142,10 +141,13 @@ test_put_data(Config) ->
     eredis:stop(C),
     ok.
 
-join_cluster(Config) ->
-    [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
-    erlang:send({?MODULE, AnotherNode}, {join_me, node(), self()}),
-    receive ok -> true end.
+a_join_cluster(_Config) ->
+    ANode = list_to_atom("a@" ++ net_adm:localhost()),
+    erlang:send({?MODULE, ANode}, {join_me, node(), self()}),
+    receive
+        Result ->
+            Result = ok
+    end.
 
 test_checkout_data(Config) ->
     wait_reconciling(),
@@ -157,9 +159,18 @@ test_checkout_data(Config) ->
     eredis:stop(C),
     true.
 
-test_finished(Config) ->
-    [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
-    erlang:send({?MODULE, AnotherNode}, close),
+c_join_cluster(_Config) ->
+    CNode = list_to_atom("c@" ++ net_adm:localhost()),
+    erlang:send({?MODULE, CNode}, {join_me, node(), self()}),
+    receive
+        Result ->
+            erlang:send({?MODULE, CNode}, close),
+            Result = ring_full
+    end.
+
+test_finished(_Config) ->
+    ANode = list_to_atom("a@" ++ net_adm:localhost()),
+    erlang:send({?MODULE, ANode}, close),
     true.
 
 wait_reconciling() ->
