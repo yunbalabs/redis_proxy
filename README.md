@@ -1,6 +1,6 @@
 # redis_proxy
 
-An Erlang proxy for redis. It's based on [distributed_proxy](https://github.com/yunbalabs/distributed_proxy).
+A distributed proxy for redis in Erlang. It's based on [distributed_proxy](https://github.com/yunbalabs/distributed_proxy).
 
 ## Usage
 ### Build
@@ -31,4 +31,28 @@ set 1 1
 ### GET key
 ```
 get 1
+```
+
+## Cluster
+### Join a cluster
+```
+$ ./rel/redis_proxy/bin/redis_proxy_admin.sh join any_live_node_in_the_cluster@hostname
+```
+
+### Cluster map
+```
+$ ./rel/redis_proxy/bin/redis_proxy_admin.sh map
+```
+
+## Status
+### Node status
+```
+$ ./rel/redis_proxy/bin/redis_proxy_admin.sh status
+```
+
+### Replica status
+```
+$ ./rel/redis_proxy/bin/redis_proxy_admin.sh replicas               %% all replicas status
+$ ./rel/redis_proxy/bin/redis_proxy_admin.sh replica replica_id     %% a specific replica status
+$ ./rel/redis_proxy/bin/redis_proxy_admin.sh locate key             %% replica status about a specific key
 ```
