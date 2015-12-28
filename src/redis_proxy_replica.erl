@@ -211,10 +211,12 @@ get_available_replica(Index) ->
     {Index, GroupId} = lists:keyfind(Index, 1, AllOwners),
     Pos = distributed_proxy_ring:index2pos({Index, GroupId}, Ring),
     Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
-    request_slaveof(lists:delete(node(), Nodes), Index, 1).
+    request_slaveof(Nodes, Index, 1).
 
 request_slaveof([], _Index, _GroupIndex) ->
     not_found;
+request_slaveof([Node | Rest], Index, GroupIndex) when Node =:= node() ->
+    request_slaveof(Rest, Index, GroupIndex + 1);
 request_slaveof([Node | Rest], Index, GroupIndex) ->
     case distributed_proxy_node_watcher:is_up(Node) of
         true ->
