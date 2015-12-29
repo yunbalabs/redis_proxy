@@ -56,3 +56,56 @@ $ ./rel/redis_proxy/bin/redis_proxy_admin.sh replicas               %% all repli
 $ ./rel/redis_proxy/bin/redis_proxy_admin.sh replica replica_id     %% a specific replica status
 $ ./rel/redis_proxy/bin/redis_proxy_admin.sh locate key             %% replica status about a specific key
 ```
+
+## Benchmark
+### Intel(R) Xeon(R) CPU E5-2630 0 @ 2.30GHz, 2300 MHz x 8 + 32G RAM
++ Erlang R16B02
+
+#### slot_num: 1, replica_size: 1
+```bash
+$ redis-benchmark -t set,get -q -n 10000 -r 10000 -p 6380 -h test.host -c 200
+SET: 5293.81 requests per second
+GET: 5437.74 requests per second
+```
+
+#### slot_num: 8, replica_size: 1
+```bash
+$ redis-benchmark -t set,get -q -n 100000 -r 100000 -p 6380 -h test.host -c 200
+SET: 16742.01 requests per second
+GET: 17543.86 requests per second
+```
+
+#### slot_num: 16, replica_size: 1
+```bash
+$ redis-benchmark -t set,get -q -n 100000 -r 100000 -p 6380 -h test.host -c 200
+SET: 17006.80 requests per second
+GET: 17537.71 requests per second
+```
+
+#### slot_num: 32, replica_size: 1
+```bash
+$ redis-benchmark -t set,get -q -n 100000 -r 100000 -p 6380 -h test.host -c 200
+SET: 18653.24 requests per second
+GET: 19409.94 requests per second
+```
+
+#### slot_num: 64, replica_size: 1
+```bash
+$ redis-benchmark -t set,get -q -n 100000 -r 100000 -p 6380 -h test.host -c 200
+SET: 18145.53 requests per second
+GET: 18667.16 requests per second
+```
+
+#### slot_num: 32, replica_size: 2
+```bash
+$ redis-benchmark -t set,get -q -n 100000 -r 100000 -p 6380 -h test.host -c 200
+SET: 17247.33 requests per second
+GET: 19346.10 requests per second
+```
+
+#### slot_num: 1, replica_size: 1, redis_client: eredis_pool
+```bash
+$ redis-benchmark -t set,get -q -n 100000 -r 100000 -p 6380 -h test.host -c 200
+SET: 17479.46 requests per second
+GET: 18497.96 requests per second
+```
