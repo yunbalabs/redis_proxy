@@ -1,5 +1,5 @@
 ## Name of the node
--name redis_proxy@127.0.0.1
+-sname redis_proxy
 
 ## Cookie for distributed erlang
 -setcookie redis_proxy

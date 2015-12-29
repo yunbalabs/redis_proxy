@@ -122,6 +122,8 @@ parse_response(r, _Command, [{ok, Result}], _State) ->
     {ok, Result};
 parse_response(r, _Command, [{error, temporarily_unavailable}], _State) ->
     try_again;
+parse_response(r, _Command, [{error, refuse}], _State) ->
+    {error, <<"ERR the replica refused">>};
 parse_response(r, Command, [{error, Reason}], _State) ->
     lager:error("command ~p error ~p", [Command, Reason]),
     {error, <<"ERR response error">>};

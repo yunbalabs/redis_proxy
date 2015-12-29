@@ -45,7 +45,12 @@ all() ->
 groups() ->
     [
         {responser, [], [wait_for_messages]},
-        {requester, [sequence], [test_put_data, a_join_cluster, test_checkout_data, c_join_cluster, test_finished]}
+        {requester, [sequence], [
+            test_put_data,
+            a_join_cluster,
+            test_checkout_data, test_checkout_data_after_reconcile,
+            c_join_cluster,
+            test_finished]}
     ].
 
 %%--------------------------------------------------------------------
@@ -150,14 +155,24 @@ a_join_cluster(_Config) ->
     end.
 
 test_checkout_data(Config) ->
+    {ok, C} = eredis:start_link("127.0.0.1", ?config(redis_port, Config)),
+    true = lists:any(
+        fun (Key) ->
+            case eredis:q(C, ["GET", integer_to_list(Key)]) of
+                {ok, <<"test">>} -> false;
+                {error, <<"ERR the replica refused">>} -> true
+            end
+        end, lists:seq(1, ?config(data_size, Config))),
+    eredis:stop(C).
+
+test_checkout_data_after_reconcile(Config) ->
     wait_reconciling(),
     {ok, C} = eredis:start_link("127.0.0.1", ?config(redis_port, Config)),
     lists:foreach(
         fun (Key) ->
             {ok, <<"test">>} = eredis:q(C, ["GET", integer_to_list(Key)])
         end, lists:seq(1, ?config(data_size, Config))),
-    eredis:stop(C),
-    true.
+    eredis:stop(C).
 
 c_join_cluster(_Config) ->
     CNode = list_to_atom("c@" ++ net_adm:localhost()),
