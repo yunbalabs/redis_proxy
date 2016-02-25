@@ -109,3 +109,9 @@ $ redis-benchmark -t set,get -q -n 100000 -r 100000 -p 6380 -h test.host -c 200
 SET: 17479.46 requests per second
 GET: 18497.96 requests per second
 ```
+
+## TODO
+### Optimize performance
+1. eredis_parser:parse
+2. distributed_proxy_util:pmap
+3. redis_proxy_util:locate_key
