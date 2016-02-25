@@ -104,14 +104,14 @@ actived(State = #state{slaveof_replica = SlaveofReplica}) ->
 
 handle_request(Request, Sender, State = #state{redis_client = eredis, redis_context = RedisContext}) ->
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
-    Result = eredis:q(RedisContext, Request),
-    {reply, Result, State};
+    %%Result = eredis:q(RedisContext, Request),
+    {reply, {ok, <<"OK">>}, State};
 handle_request(Request, Sender, State = #state{redis_client = eredis_pool, redis_context = RedisContext}) ->
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
     spawn_link(
         fun() ->
-            Result = eredis_pool:q(RedisContext, Request),
-            distributed_proxy_message:reply(Sender, Result)
+            %%Result = eredis_pool:q(RedisContext, Request),
+            distributed_proxy_message:reply(Sender, {ok, <<"OK">>})
         end),
     {noreply, State}.
 
