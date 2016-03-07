@@ -31,6 +31,7 @@ init([CommandTypes]) ->
 handle_redis(Connection, Action, State) ->
     case parse_command(Action, State) of
         {ok, Type, KeyBin, Command} ->
+            stat_request(Type),
             handle_key_command(Connection, Type, KeyBin, Command, State, 0, []);
         {ok, c, Command} ->
             handle_control_command(Connection, Command);
@@ -119,6 +120,7 @@ request_replicas(w, KeyBin, Command, _State, _TriedNodes) ->
     {ok, Nodes, Response}.
 
 parse_response(r, _Command, [{ok, Result}], _State) ->
+    stat_response(r),
     {ok, Result};
 parse_response(r, _Command, [{error, temporarily_unavailable}], _State) ->
     try_again;
@@ -132,6 +134,7 @@ parse_response(r, _Command, [{forward, Info}], _State) ->
 parse_response(w, Command, Results, _State) ->
     case write_response_success(Results, length(Results)) of
         ok ->
+            stat_response(w),
             {ok, ok};
         {error, Reason} ->
             lager:error("command ~p error ~p", [Command, Reason]),
@@ -171,3 +174,13 @@ write_response_success([{error, temporarily_unavailable} | Rest], TmpUnaibleCoun
 write_response_success([{error, Reason} | _Rest], _TmpUnaibleCount) ->
     lager:error("write_response error ~p", [Reason]),
     {error, Reason}.
+
+stat_request(r) ->
+    redis_proxy_status:stat_frontend_request(read);
+stat_request(w) ->
+    redis_proxy_status:stat_frontend_request(write).
+
+stat_response(r) ->
+    redis_proxy_status:stat_frontend_response(read);
+stat_response(w) ->
+    redis_proxy_status:stat_frontend_response(write).
