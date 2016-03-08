@@ -164,8 +164,9 @@ test_slaveof_with_data(Config) ->
     Idx = 0,
     GroupIndex = 1,
     [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
-    erlang:send({?MODULE, AnotherNode}, {write_data, {Idx, GroupIndex}, self()}),
-    receive done -> ok end,
+    case redis_proxy_test_util:repeat_call({?MODULE, AnotherNode}, {write_data, {Idx, GroupIndex}, self()}, 5000, 3) of
+        done -> ok
+    end,
 
     GroupIndex2 = 2,
     {ok, ReplicaPid} = distributed_proxy_replica_manager:get_replica_pid({Idx, GroupIndex2}),

@@ -32,7 +32,11 @@ handle_redis(Connection, Action, State) ->
     case parse_command(Action, State) of
         {ok, Type, KeyBin, Command} ->
             stat_request(Type),
-            handle_key_command(Connection, Type, KeyBin, Command, State, 0, []);
+            StartTime = redis_proxy_util:get_millisec(),
+
+            handle_key_command(Connection, Type, KeyBin, Command, State, 0, []),
+
+            stat_latency(Type, redis_proxy_util:get_millisec() - StartTime);
         {ok, c, Command} ->
             handle_control_command(Connection, Command);
         {ok, _Type, _Command} ->
@@ -184,3 +188,8 @@ stat_response(r) ->
     redis_proxy_status:stat_frontend_response(read);
 stat_response(w) ->
     redis_proxy_status:stat_frontend_response(write).
+
+stat_latency(r, Latency) ->
+    redis_proxy_status:stat_latency(read, Latency);
+stat_latency(w, Latency) ->
+    redis_proxy_status:stat_latency(write, Latency).

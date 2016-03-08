@@ -10,7 +10,7 @@
 -author("zy").
 
 %% API
--export([start_application/0, wait_all_replica_started/3, wait_replica_started/2]).
+-export([start_application/0, wait_all_replica_started/3, wait_replica_started/2, repeat_call/4]).
 
 start_application() ->
     ok = filelib:ensure_dir("priv/redis/"),
@@ -28,6 +28,7 @@ start_application() ->
     ok = distributed_proxy:start(),
     ok = application:ensure_started(ranch),
     ok = application:ensure_started(eredis_pool),
+    {ok, _} = application:ensure_all_started(exometer_influxdb),
     redis_proxy:start().
 
 wait_all_replica_started(Node, Owners, MyRing) ->
@@ -90,4 +91,13 @@ wait_replica_started(Node, {Idx, GroupIndex}) ->
             end;
         not_found ->
             wait_replica_started(Node, {Idx, GroupIndex})
+    end.
+
+repeat_call(_Dest, _Msg, _Interval, 0) ->
+    {error, timeout};
+repeat_call(Dest, Msg, Interval, TryTimes) ->
+    erlang:send(Dest, Msg),
+    receive
+        Ret -> Ret
+    after Interval -> repeat_call(Dest, Msg, Interval, TryTimes - 1)
     end.

@@ -13,7 +13,7 @@
 -export([
     file_exists/1, wait_for_file/3, wait_for_file_deleted/3,
     select_one_random_node/1, generate_apl/1, locate_key/1,
-    redis_pool_name/2]).
+    redis_pool_name/2, get_millisec/0]).
 
 file_exists(Filepath) ->
     case filelib:last_modified(filename:absname(Filepath)) of
@@ -89,3 +89,7 @@ redis_pool_name(Index, GroupIndex) ->
     GroupIndexBin = integer_to_binary(GroupIndex),
     AllBin = <<$r,$e,$d,$i,$s,$_,$p,$r,$o,$x,$y,$_,$r,$e,$d,$i,$s,$_,$p,$o,$o,$l,$_, IndexBin/binary, $_, GroupIndexBin/binary>>,
     binary_to_atom(AllBin, latin1).
+
+get_millisec() ->
+    {Mega, Sec, Micro} = os:timestamp(),
+    (Mega * 1000000 + Sec) * 1000 + round(Micro / 1000).

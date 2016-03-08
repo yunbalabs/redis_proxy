@@ -23,7 +23,7 @@
 -define(DEFAULT_REDIS_CLIENT, eredis).
 -define(DEFAULT_READ_MAX_TRY_TIMES, 3).
 -define(ENABLE_STAT, false).
--define(DEFAULT_STAT_INTERVAL, 1000).           %% ms
+-define(DEFAULT_STAT_INTERVAL, 10000).           %% ms
 
 redis_port() ->
     {ok, App}  = application:get_application(?MODULE),

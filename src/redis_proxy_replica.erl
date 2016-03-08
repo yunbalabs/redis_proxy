@@ -34,6 +34,8 @@ init(Index, GroupIndex) ->
             RedisClientModule = redis_proxy_config:redis_client(),
             case connect_redis(RedisClientModule, Index, GroupIndex, RedisPort) of
                 {ok, RedisContext} ->
+                    redis_proxy_status:register_backend_request(Index, GroupIndex),
+
                     {ok, #state{
                         index = Index, group_index = GroupIndex,
                         warnup_state = loading,
@@ -102,12 +104,22 @@ actived(State = #state{slaveof_replica = SlaveofReplica}) ->
     accept_request(SlaveofReplica),
     {ok, State}.
 
-handle_request(Request, Sender, State = #state{redis_client = eredis, redis_context = RedisContext}) ->
+handle_request(Request, Sender, State = #state{
+    redis_client = eredis,
+    redis_context = RedisContext,
+    index = Index, group_index = GroupIndex}) ->
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
+    redis_proxy_status:stat_backend_request(Index, GroupIndex),
+
     Result = eredis:q(RedisContext, Request),
     {reply, Result, State};
-handle_request(Request, Sender, State = #state{redis_client = eredis_pool, redis_context = RedisContext}) ->
+handle_request(Request, Sender, State = #state{
+    redis_client = eredis_pool,
+    redis_context = RedisContext,
+    index = Index, group_index = GroupIndex}) ->
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
+    redis_proxy_status:stat_backend_request(Index, GroupIndex),
+
     spawn_link(
         fun() ->
             Result = eredis_pool:q(RedisContext, Request),
@@ -115,13 +127,23 @@ handle_request(Request, Sender, State = #state{redis_client = eredis_pool, redis
         end),
     {noreply, State}.
 
-terminate(_Reason, #state{redis_client = eredis, redis_context = RedisContext, close_script = RedisCloseScript, pid_file = RedisPidFile}) ->
+terminate(_Reason, #state{
+    redis_client = eredis,
+    redis_context = RedisContext,
+    close_script = RedisCloseScript, pid_file = RedisPidFile,
+    index = Index, group_index = GroupIndex}) ->
     catch eredis:stop(RedisContext),
     try_stop_redis(RedisCloseScript, RedisPidFile, false),
+    redis_proxy_status:unregister_backend_request(Index, GroupIndex),
     ok;
-terminate(_Reason, #state{redis_client = eredis_pool, redis_context = RedisContext, close_script = RedisCloseScript, pid_file = RedisPidFile}) ->
+terminate(_Reason, #state{
+    redis_client = eredis_pool,
+    redis_context = RedisContext,
+    close_script = RedisCloseScript, pid_file = RedisPidFile,
+    index = Index, group_index = GroupIndex}) ->
     catch eredis_pool:delete_pool(RedisContext),
     try_stop_redis(RedisCloseScript, RedisPidFile, false),
+    redis_proxy_status:unregister_backend_request(Index, GroupIndex),
     ok.
 
 get_slaveof_state(#state{redis_context = RedisContext, redis_client = RedisClientModule}) ->

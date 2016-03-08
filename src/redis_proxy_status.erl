@@ -13,10 +13,11 @@
 
 %% API
 -export([start_link/0,
+    sample_latency/1, stat_latency/2,
+    count_frontend_request/1, count_frontend_response/1,
     stat_frontend_request/1, stat_frontend_response/1,
-    register_backend_request/2, register_backend_response/2,
-    stat_backend_request/2, stat_backend_response/2,
-    unregister_backend_request/2, unregister_backend_response/2,
+    count_backend_request/2,
+    register_backend_request/2, stat_backend_request/2, unregister_backend_request/2,
     register/3, update/2, unregister/1]).
 
 %% gen_server callbacks
@@ -29,6 +30,7 @@
 
 -define(SERVER, ?MODULE).
 
+-define(LATENCY_NAME, latency).
 -define(FRONTEND_REQUEST_NAME, frontend_request).
 -define(FRONTEND_RESPONSE_NAME, frontend_response).
 -define(BACKEND_REQUEST_NAME, backend_request).
@@ -54,6 +56,26 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+sample_latency(read) ->
+    exometer:get_value([?LATENCY_NAME, read], value);
+sample_latency(write) ->
+    exometer:get_value([?LATENCY_NAME, write], value).
+
+stat_latency(read, Latency) ->
+    update([?LATENCY_NAME, read], Latency);
+stat_latency(write, Latency) ->
+    update([?LATENCY_NAME, write], Latency).
+
+count_frontend_request(read) ->
+    exometer:get_value([?FRONTEND_REQUEST_NAME, read], value);
+count_frontend_request(write) ->
+    exometer:get_value([?FRONTEND_REQUEST_NAME, write], value).
+
+count_frontend_response(read) ->
+    exometer:get_value([?FRONTEND_RESPONSE_NAME, read], value);
+count_frontend_response(write) ->
+    exometer:get_value([?FRONTEND_RESPONSE_NAME, write], value).
+
 stat_frontend_request(read) ->
     update([?FRONTEND_REQUEST_NAME, read], 1);
 stat_frontend_request(write) ->
@@ -64,23 +86,17 @@ stat_frontend_response(read) ->
 stat_frontend_response(write) ->
     update([?FRONTEND_RESPONSE_NAME, write], 1).
 
-register_backend_request(SlotIndex, ReplicaIndex) ->
-    register([?BACKEND_REQUEST_NAME, SlotIndex, ReplicaIndex], spiral, [{slot, {from_name, 2}}, {replica, {from_name, 3}}]).
+count_backend_request(SlotIndex, ReplicaIndex) ->
+    exometer:get_value([?BACKEND_REQUEST_NAME, SlotIndex, ReplicaIndex], value).
 
-register_backend_response(SlotIndex, ReplicaIndex) ->
-    register([?BACKEND_RESPONSE_NAME, SlotIndex, ReplicaIndex], spiral, [{slot, {from_name, 2}}, {replica, {from_name, 3}}]).
+register_backend_request(SlotIndex, ReplicaIndex) ->
+    register([?BACKEND_REQUEST_NAME, SlotIndex, ReplicaIndex], counter, [{slot, {from_name, 2}}, {replica, {from_name, 3}}]).
 
 stat_backend_request(SlotIndex, ReplicaIndex) ->
     update([?BACKEND_REQUEST_NAME, SlotIndex, ReplicaIndex], 1).
 
-stat_backend_response(SlotIndex, ReplicaIndex) ->
-    update([?BACKEND_RESPONSE_NAME, SlotIndex, ReplicaIndex], 1).
-
 unregister_backend_request(SlotIndex, ReplicaIndex) ->
     ?MODULE:unregister([?BACKEND_REQUEST_NAME, SlotIndex, ReplicaIndex]).
-
-unregister_backend_response(SlotIndex, ReplicaIndex) ->
-    ?MODULE:unregister([?BACKEND_RESPONSE_NAME, SlotIndex, ReplicaIndex]).
 
 -spec(register(Name :: list(), Type :: atom(), Extra :: list()) -> ok).
 register(Name, Type, Extra) ->
@@ -88,7 +104,8 @@ register(Name, Type, Extra) ->
 
 -spec(update(Name :: list(), Value :: any()) -> ok).
 update(Name, Value) ->
-    gen_server:cast(?SERVER, {update, Name, Value}).
+    exometer:update(Name, Value),
+    ok.
 
 -spec(unregister(Name :: list()) -> ok).
 unregister(Name) ->
@@ -117,6 +134,8 @@ init([]) ->
         true ->
             ReportInterval = redis_proxy_config:stat_interval(),
 
+            ok = register_gauge_item([?LATENCY_NAME, read], ReportInterval, [{type, {from_name, 2}}]),
+            ok = register_gauge_item([?LATENCY_NAME, write], ReportInterval, [{type, {from_name, 2}}]),
             ok = register_counter_item([?FRONTEND_REQUEST_NAME, read], ReportInterval, [{type, {from_name, 2}}]),
             ok = register_counter_item([?FRONTEND_REQUEST_NAME, write], ReportInterval, [{type, {from_name, 2}}]),
             ok = register_counter_item([?FRONTEND_RESPONSE_NAME, read], ReportInterval, [{type, {from_name, 2}}]),
@@ -145,7 +164,7 @@ init([]) ->
 handle_call(_Request, _From, State = #state{enable = false}) ->
     {reply, ok, State};
 
-handle_call({register, Name, spiral, Extra}, _From, State = #state{report_interval = ReportInterval}) ->
+handle_call({register, Name, counter, Extra}, _From, State = #state{report_interval = ReportInterval}) ->
     Result = register_counter_item(Name, ReportInterval, Extra),
     {reply, Result, State};
 
@@ -164,10 +183,6 @@ handle_call(_Request, _From, State) ->
     {noreply, NewState :: #state{}, timeout() | hibernate} |
     {stop, Reason :: term(), NewState :: #state{}}).
 handle_cast(_Request, State = #state{enable = false}) ->
-    {noreply, State};
-
-handle_cast({update, Name, Value}, State) ->
-    exometer:update(Name, Value),
     {noreply, State};
 
 handle_cast({unregister, Name}, State) ->
@@ -228,6 +243,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+register_gauge_item(Name, Interval, Extra) ->
+    ok = exometer:re_register(Name, gauge, []),
+    exometer_report:subscribe(exometer_report_influxdb, Name, value, Interval, Extra).
+
 register_counter_item(Name, Interval, Extra) ->
     ok = exometer:re_register(Name, counter, []),
     exometer_report:subscribe(exometer_report_influxdb, Name, value, Interval, Extra).

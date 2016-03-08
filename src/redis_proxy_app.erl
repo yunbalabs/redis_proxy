@@ -13,6 +13,7 @@ start(_StartType, _StartArgs) ->
     CommandTypes = [{"get", r}, {"set", w}],
 
     ok = redis_protocol:start([CommandTypes]),
+    clique:register([redis_proxy_cli]),
     redis_proxy_sup:start_link().
 
 stop(_State) ->

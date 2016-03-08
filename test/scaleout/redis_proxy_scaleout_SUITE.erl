@@ -148,10 +148,9 @@ test_put_data(Config) ->
 
 a_join_cluster(_Config) ->
     ANode = list_to_atom("a@" ++ net_adm:localhost()),
-    erlang:send({?MODULE, ANode}, {join_me, node(), self()}),
-    receive
-        Result ->
-            Result = ok
+    case redis_proxy_test_util:repeat_call({?MODULE, ANode}, {join_me, node(), self()}, 500, 10) of
+        ok ->
+            ok
     end.
 
 test_checkout_data(Config) ->

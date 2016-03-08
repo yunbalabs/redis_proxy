@@ -76,6 +76,7 @@ case "$1" in
     status)
         ensure_node_running
         $NODETOOL rpc distributed_proxy_cli command "dp-admin" "cluster" "status"
+        $NODETOOL rpc redis_proxy_cli command "rp-admin" "status"
         ;;
     replicas)
         if [ $# -eq 1 ]; then
@@ -97,9 +98,11 @@ case "$1" in
         if [ $# -eq 2 ]; then
             ensure_node_running
             $NODETOOL rpc distributed_proxy_cli command "dp-admin" "cluster" "replica" "--replica" "$2"
+            $NODETOOL rpc redis_proxy_cli command "rp-admin" "replica" "--replica" "$2"
         elif [ $# -eq 3 ]; then
             ensure_node_running
             $NODETOOL rpc distributed_proxy_cli command "dp-admin" "cluster" "replica" "--replica" "$2" "--node" "$3"
+            $NODETOOL rpc redis_proxy_cli command "rp-admin" "replica" "--replica" "$2" "--node" "$3"
         else
             echo "Usage: $SCRIPT replica <replica_id> [<node>]"
             exit 1
