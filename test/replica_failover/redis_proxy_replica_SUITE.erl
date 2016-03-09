@@ -164,7 +164,7 @@ test_slaveof_with_data(Config) ->
     Idx = 0,
     GroupIndex = 1,
     [AnotherNode] = lists:delete(?config(master_node, Config), nodes()),
-    case redis_proxy_test_util:repeat_call({?MODULE, AnotherNode}, {write_data, {Idx, GroupIndex}, self()}, 5000, 3) of
+    case redis_proxy_test_util:repeat_call({?MODULE, AnotherNode}, {write_data, {Idx, GroupIndex}, self()}, 10000, 1) of
         done -> ok
     end,
 

@@ -24,7 +24,6 @@ start_link() ->
 
 init([]) ->
     Children = lists:flatten([
-        ?CHILD(redis_proxy_status, worker)
     ]),
 
     {ok, {{one_for_one, 10, 10}, Children}}.
