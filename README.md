@@ -84,14 +84,12 @@ $ ./rel/redis_proxy/bin/redis_proxy_admin.sh locate key             %% replica s
 
 2. Restart the application. The stat data will appear in InfluxDB:
 
-    ```
     | measurement name | data type |
     | ---------------- |:-----------------------------:|
     | frontend_request | count of the frontend request |
     | frontend_response| count of the frontend response|
     | backend_request  | count of the backend request  |
     |  latency         | time(milliseconds) of request |
-    ```
 
 ## Benchmark
 ### Intel(R) Xeon(R) CPU E5-2630 0 @ 2.30GHz, 2300 MHz x 8 + 32G RAM
