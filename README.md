@@ -57,6 +57,42 @@ $ ./rel/redis_proxy/bin/redis_proxy_admin.sh replica replica_id     %% a specifi
 $ ./rel/redis_proxy/bin/redis_proxy_admin.sh locate key             %% replica status about a specific key
 ```
 
+### Request/Response status
+1. Update config (sys.config).
+
+    - Export stat data through exomter_core
+    ```
+        %% exometer core config
+        {exometer_core, [
+            {report, [
+                {reporters, [
+                    {exometer_report_influxdb, [{protocol, udp},
+                        {host, <<"localhost">>},
+                        {port, 8089},
+                        {db, <<"udp">>}]}
+                ]}
+            ]}
+        ]}
+    ```
+    - Enable stat
+    ```
+        {redis_proxy, [
+            ...
+            {enable_stat, true}
+        ]}
+    ```
+
+2. Restart the application. The stat data will appear in InfluxDB:
+
+    ```
+    | measurement name | data type |
+    | ---------------- |:-----------------------------:|
+    | frontend_request | count of the frontend request |
+    | frontend_response| count of the frontend response|
+    | backend_request  | count of the backend request  |
+    |  latency         | time(milliseconds) of request |
+    ```
+
 ## Benchmark
 ### Intel(R) Xeon(R) CPU E5-2630 0 @ 2.30GHz, 2300 MHz x 8 + 32G RAM
 + Erlang R16B02
