@@ -4,7 +4,7 @@ set -e
 
 ROOT="$PWD"
 
-REDIS_VSN="2.8.23"
+REDIS_VSN="2.8.24"
 
 download_redis() {
 	echo "download redis ${REDIS_VSN}..."
