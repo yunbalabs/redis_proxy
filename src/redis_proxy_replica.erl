@@ -29,6 +29,7 @@
 -define(DEFAULT_SLAVE_OFFSET_THRESHOLD, 100).
 
 init(Index, GroupIndex) ->
+    random:seed(now()),
     case start_redis(Index, GroupIndex) of
         {ok, RedisPort, RedisCloseScript, RedisPidFile} ->
             RedisClientModule = redis_proxy_config:redis_client(),
@@ -111,19 +112,28 @@ handle_request(Request, Sender, State = #state{
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
     redis_proxy_status:stat_backend_request(Index, GroupIndex),
 
-    Result = eredis:q(RedisContext, Request),
-    {reply, Result, State};
+    case eredis:q(RedisContext, Request) of
+        {error, no_connection} ->
+            {stop, no_connection, State};
+        Result ->
+            {reply, Result, State}
+    end;
 handle_request(Request, Sender, State = #state{
     redis_client = eredis_pool,
     redis_context = RedisContext,
     index = Index, group_index = GroupIndex}) ->
     lager:debug("receive the request ~p from ~p", [Request, Sender]),
     redis_proxy_status:stat_backend_request(Index, GroupIndex),
+    ReplicaPid = self(),
 
     spawn_link(
         fun() ->
-            Result = eredis_pool:q(RedisContext, Request),
-            distributed_proxy_message:reply(Sender, Result)
+            case eredis_pool:q(RedisContext, Request) of
+                {error, no_connection} ->
+                    distributed_proxy_replica:trigger_stop(ReplicaPid, no_connection);
+                Result ->
+                    distributed_proxy_message:reply(Sender, Result)
+            end
         end),
     {noreply, State}.
 
@@ -280,7 +290,6 @@ accept_request(ReplicaPid) ->
 try_start_redis(_Executable, _ConfigFile, _UnixSocketFile, _DataDir, 0) ->
     {error, unavailable_port};
 try_start_redis(Executable, ConfigFile, UnixSocketFile, DataDir, TryTimes) ->
-    random:seed(now()),
     ListenPort = integer_to_list(10000 + random:uniform(50000)),
 
     Args = [ConfigFile, "--unixsocket", UnixSocketFile, "--daemonize", "yes", "--port", ListenPort],
