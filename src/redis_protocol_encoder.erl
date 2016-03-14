@@ -21,7 +21,7 @@ encode(Arg) when is_binary(Arg) ->
     [<<$$>>, integer_to_list(iolist_size(Arg)), <<?NL>>, Arg, <<?NL>>];
 encode(Args) when is_list(Args) ->
     ArgCount = [<<$*>>, integer_to_list(length(Args)), <<?NL>>],
-    ArgsBin = lists:map(fun encode/1, lists:map(fun to_binary/1, Args)),
+    ArgsBin = lists:map(fun encode/1, Args),
 
     [ArgCount, ArgsBin];
 encode(Arg) ->

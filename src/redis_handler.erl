@@ -75,7 +75,7 @@ parse_command(_Command, _State) ->
 
 handle_key_command(Connection, _Type, _KeyBin, _Command,
         #state{read_max_try_times = MaxTryTimes},
-        TryTimes, _TriedNodes) when TryTimes > MaxTryTimes ->
+        TryTimes, _TriedNodes) when TryTimes >= MaxTryTimes ->
     ok = reply(Connection, {error, <<"ERR all replicas are unavailable">>});
 handle_key_command(Connection, Type, KeyBin, Command, State, TryTimes, TriedNodes) ->
     case request_replicas(Type, KeyBin, Command, State, TriedNodes) of
@@ -117,6 +117,10 @@ request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForw
                     {ok, [Node], [{forward, << "MOVED ", KeyBin/binary, " ", NodeBin/binary >>}]}
             end
     end;
+request_replicas(mr, _, Command, State, _TriedNodes) ->
+    [NameBin | Keys] = Command,
+    Response = lists:map(fun(Key) -> handle_each_for_multi_command(r, NameBin, Key, State, 0, []) end, Keys),
+    {ok, [node()], Response};
 request_replicas(w, KeyBin, Command, _State, _TriedNodes) ->
     {Idx, Nodes} = redis_proxy_util:locate_key(KeyBin),
     RequestNodes = redis_proxy_util:generate_apl(Nodes),
@@ -135,6 +139,9 @@ parse_response(r, Command, [{error, Reason}], _State) ->
     {error, <<"ERR response error">>};
 parse_response(r, _Command, [{forward, Info}], _State) ->
     {error, Info};
+parse_response(mr, _Command, Results, _State) ->
+    stat_response(mr),
+    {ok, Results};
 parse_response(w, Command, Results, _State) ->
     case write_response_success(Results, length(Results)) of
         ok ->
@@ -181,15 +188,39 @@ write_response_success([{error, Reason} | _Rest], _TmpUnaibleCount) ->
 
 stat_request(r) ->
     redis_proxy_status:stat_frontend_request(read);
+stat_request(mr) ->
+    redis_proxy_status:stat_frontend_request(read);
 stat_request(w) ->
     redis_proxy_status:stat_frontend_request(write).
 
 stat_response(r) ->
+    redis_proxy_status:stat_frontend_response(read);
+stat_response(mr) ->
     redis_proxy_status:stat_frontend_response(read);
 stat_response(w) ->
     redis_proxy_status:stat_frontend_response(write).
 
 stat_latency(r, Latency) ->
     redis_proxy_status:stat_latency(read, Latency);
+stat_latency(mr, Latency) ->
+    redis_proxy_status:stat_latency(multiple_read, Latency);
 stat_latency(w, Latency) ->
     redis_proxy_status:stat_latency(write, Latency).
+
+handle_each_for_multi_command(_Type, _NameBin, _KeyBin, #state{read_max_try_times = MaxTryTimes}, TryTimes, _TriedNodes) when TryTimes >= MaxTryTimes ->
+    {error, <<"ERR all replicas are unavailable">>};
+handle_each_for_multi_command(Type, NameBin, KeyBin, State, TryTimes, TriedNodes) ->
+    RequestOneCommand = [NameBin, KeyBin],
+    case request_replicas(Type, KeyBin, RequestOneCommand, State, TriedNodes) of
+        {ok, RequestNodes, Response} ->
+            case parse_response(Type, RequestOneCommand, Response, State) of
+                {ok, [Response2]} ->
+                    Response2;
+                {error, Reason} ->
+                    {error, Reason};
+                try_again ->
+                    handle_each_for_multi_command(Type, NameBin, KeyBin, State, TryTimes + 1, lists:append(RequestNodes, TriedNodes))
+            end;
+        {error, Reason} ->
+            {error, Reason}
+    end.

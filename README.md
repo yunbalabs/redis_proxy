@@ -33,6 +33,11 @@ set 1 1
 get 1
 ```
 
+### MGET key [key ...]
+```
+mget 1 2 3
+```
+
 ## Cluster
 ### Join a cluster
 ```

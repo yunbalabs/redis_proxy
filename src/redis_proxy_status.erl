@@ -63,6 +63,8 @@ sample_latency(write) ->
 
 stat_latency(read, Latency) ->
     update([?LATENCY_NAME, read], Latency);
+stat_latency(multiple_read, Latency) ->
+    update([?LATENCY_NAME, multiple_read], Latency);
 stat_latency(write, Latency) ->
     update([?LATENCY_NAME, write], Latency).
 
@@ -135,6 +137,7 @@ init([]) ->
             ReportInterval = redis_proxy_config:stat_interval(),
 
             ok = register_gauge_item([?LATENCY_NAME, read], ReportInterval, [{type, {from_name, 2}}]),
+            ok = register_gauge_item([?LATENCY_NAME, multiple_read], ReportInterval, [{type, {from_name, 2}}]),
             ok = register_gauge_item([?LATENCY_NAME, write], ReportInterval, [{type, {from_name, 2}}]),
             ok = register_counter_item([?FRONTEND_REQUEST_NAME, read], ReportInterval, [{type, {from_name, 2}}]),
             ok = register_counter_item([?FRONTEND_REQUEST_NAME, write], ReportInterval, [{type, {from_name, 2}}]),
