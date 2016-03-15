@@ -14,7 +14,8 @@
     redis_port/0, enable_read_forward/0,
     redis_pool_size/0, redis_pool_max_overflow/0,
     redis_client/0, read_max_try_times/0,
-    enable_stat/0, stat_interval/0]).
+    enable_stat/0, stat_interval/0,
+    multi_op_max_concurrence/0]).
 
 -define(DEFAULT_REDIS_PORT, 6379).
 -define(ENABLE_READ_FORWARD, true).
@@ -24,6 +25,7 @@
 -define(DEFAULT_READ_MAX_TRY_TIMES, 3).
 -define(ENABLE_STAT, false).
 -define(DEFAULT_STAT_INTERVAL, 10000).           %% ms
+-define(DEFAULT_MULTI_OP_MAX_CONCURRENCE, 10).
 
 redis_port() ->
     {ok, App}  = application:get_application(?MODULE),
@@ -79,4 +81,12 @@ stat_interval() ->
             ?DEFAULT_STAT_INTERVAL;
         {ok, App} ->
             application:get_env(App, stat_interval, ?DEFAULT_STAT_INTERVAL)
+    end.
+
+multi_op_max_concurrence() ->
+    case application:get_application(?MODULE) of
+        undefined ->
+            ?DEFAULT_MULTI_OP_MAX_CONCURRENCE;
+        {ok, App} ->
+            application:get_env(App, multi_op_max_concurrence, ?DEFAULT_MULTI_OP_MAX_CONCURRENCE)
     end.

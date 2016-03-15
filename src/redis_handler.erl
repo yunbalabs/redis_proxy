@@ -17,7 +17,8 @@
 -record(state, {
     command_type_dict,
     enable_read_forward,
-    read_max_try_times
+    read_max_try_times,
+    multi_op_max_concurrence
 }).
 
 init([CommandTypes]) ->
@@ -25,7 +26,8 @@ init([CommandTypes]) ->
     {ok, #state{
         command_type_dict = dict:from_list(CommandTypes),
         enable_read_forward = redis_proxy_config:enable_read_forward(),
-        read_max_try_times = redis_proxy_config:read_max_try_times()
+        read_max_try_times = redis_proxy_config:read_max_try_times(),
+        multi_op_max_concurrence = redis_proxy_config:multi_op_max_concurrence()
     }}.
 
 handle_redis(Connection, Action, State) ->
@@ -118,9 +120,9 @@ request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForw
                     {ok, [Node], [{forward, << "MOVED ", KeyBin/binary, " ", NodeBin/binary >>}]}
             end
     end;
-request_replicas(mr, _, Command, State, _TriedNodes) ->
+request_replicas(mr, _, Command, State = #state{multi_op_max_concurrence = MaxP}, _TriedNodes) ->
     [NameBin | Keys] = Command,
-    Response = lists:map(fun(Key) -> handle_each_for_multi_command(r, NameBin, Key, State, 0, []) end, Keys),
+    Response = distributed_proxy_util:pmap(fun(Key) -> handle_each_for_multi_command(r, NameBin, Key, State, 0, []) end, Keys, MaxP),
     {ok, [node()], Response};
 request_replicas(w, KeyBin, Command, _State, _TriedNodes) ->
     {Idx, Nodes} = redis_proxy_util:locate_key(KeyBin),
