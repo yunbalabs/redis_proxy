@@ -82,6 +82,7 @@ handle_key_command(Connection, Type, KeyBin, Command, State, TryTimes, TriedNode
         {ok, RequestNodes, Response} ->
             case parse_response(Type, Command, Response, State) of
                 {ok, Response2} ->
+                    stat_response(Type),
                     ok = reply(Connection, Response2);
                 {error, Reason} ->
                     ok = reply(Connection, {error, Reason});
@@ -128,7 +129,6 @@ request_replicas(w, KeyBin, Command, _State, _TriedNodes) ->
     {ok, Nodes, Response}.
 
 parse_response(r, _Command, [{ok, Result}], _State) ->
-    stat_response(r),
     {ok, Result};
 parse_response(r, _Command, [{error, temporarily_unavailable}], _State) ->
     try_again;
@@ -140,12 +140,10 @@ parse_response(r, Command, [{error, Reason}], _State) ->
 parse_response(r, _Command, [{forward, Info}], _State) ->
     {error, Info};
 parse_response(mr, _Command, Results, _State) ->
-    stat_response(mr),
     {ok, Results};
 parse_response(w, Command, Results, _State) ->
     case write_response_success(Results, length(Results)) of
         ok ->
-            stat_response(w),
             {ok, ok};
         {error, Reason} ->
             lager:error("command ~p error ~p", [Command, Reason]),
