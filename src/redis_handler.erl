@@ -40,7 +40,7 @@ handle_redis(Connection, Action, State) ->
 
             stat_latency(Type, redis_proxy_util:get_millisec() - StartTime);
         {ok, c, Command} ->
-            handle_control_command(Connection, Command);
+            handle_control_command(Connection, Command, State);
         {ok, _Type, _Command} ->
             ok = reply(Connection, {error, <<"ERR not implemented">>});
         {error, Reason} ->
@@ -95,7 +95,22 @@ handle_key_command(Connection, Type, KeyBin, Command, State, TryTimes, TriedNode
             ok = reply(Connection, {error, Reason})
     end.
 
-handle_control_command(Connection, _Command) ->
+handle_control_command(Connection, "dbsize", State) ->
+    {ok, MyRing} = distributed_proxy_ring_manager:get_ring(),
+    Owners = distributed_proxy_ring:get_owners(MyRing),
+    DBSizeList = lists:map(
+        fun ({Idx, GroupId}) ->
+            Pos = distributed_proxy_ring:index2pos({Idx, GroupId}, MyRing),
+            Nodes = distributed_proxy_ring:get_nodes(Pos, MyRing),
+            case request_available_node(<<"">>, {Idx, Nodes}, [<<"dbsize">>], State, []) of
+                {ok, _RequestNodes, [{ok, Result}]} ->
+                    binary_to_integer(Result);
+                _ ->
+                    0
+            end
+        end, Owners),
+    ok = reply(Connection, lists:sum(DBSizeList));
+handle_control_command(Connection, _Command, _State) ->
     ok = reply(Connection, {error, <<"ERR not implemented">>}).
 
 request_replicas(r, KeyBin, Command, State, TriedNodes) ->

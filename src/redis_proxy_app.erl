@@ -10,7 +10,7 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    CommandTypes = [{"get", r}, {"set", w}, {"mget", mr}],
+    CommandTypes = [{"get", r}, {"set", w}, {"mget", mr}, {"dbsize", c}],
 
     ok = redis_protocol:start([CommandTypes]),
     clique:register([redis_proxy_cli]),

@@ -38,6 +38,11 @@ get 1
 mget 1 2 3
 ```
 
+### DBSIZE
+```
+DBSIZE
+```
+
 ## Cluster
 ### Join a cluster
 ```

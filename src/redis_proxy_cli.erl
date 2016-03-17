@@ -133,7 +133,20 @@ replica_output(Node, Replica) ->
                 GroupIndex ->
                     case FetchFun(Replica, GroupIndex) of
                         {ok, Count} ->
-                            Table = clique_status:table([[{request_count, Count}]]),
+                            IndexBin = integer_to_binary(Replica),
+                            GroupIndexBin = integer_to_binary(GroupIndex),
+                            Proxy = distributed_proxy_util:replica_proxy_reg_name(<<IndexBin/binary, $_, GroupIndexBin/binary>>),
+                            distributed_proxy_message:send({Proxy, Node}, [<<"dbsize">>]),
+                            DBSize = case distributed_proxy_message:recv() of
+                                         {temporarily_unavailable, _} ->
+                                             {dbsize, temporarily_unavailable};
+                                         {error, Reason} ->
+                                             {dbsize, Reason};
+                                         {ok, Result} ->
+                                             {dbsize, Result}
+                                     end,
+
+                            Table = clique_status:table([[{request_count, Count}, DBSize]]),
                             [Table];
                         _ ->
                             []
