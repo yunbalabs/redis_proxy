@@ -98,32 +98,17 @@ handle_key_command(Connection, Type, KeyBin, Command, State, TryTimes, TriedNode
 handle_control_command(Connection, _Command) ->
     ok = reply(Connection, {error, <<"ERR not implemented">>}).
 
-request_replicas(r, KeyBin, Command, #state{enable_read_forward = EnableReadForward}, TriedNodes) ->
+request_replicas(r, KeyBin, Command, State, TriedNodes) ->
     {Idx, Nodes} = redis_proxy_util:locate_key(KeyBin),
-    AvailableNodes = Nodes -- TriedNodes,
-    LocalNode = node(),
-    case lists:member(LocalNode, AvailableNodes) of
-        true ->
-            GroupIndex = distributed_proxy_util:index_of(LocalNode, Nodes),
-            Response = request_replica([{GroupIndex, LocalNode}], Idx, Command),
-            {ok, [LocalNode], Response};
-        false ->
-            case redis_proxy_util:select_one_random_node(AvailableNodes) of
-                none ->
-                    {error, <<"ERR all replicas are unavailable">>};
-                Node when EnableReadForward =:= true ->
-                    GroupIndex = distributed_proxy_util:index_of(Node, Nodes),
-                    Response = request_replica([{GroupIndex, Node}], Idx, Command),
-                    {ok, [Node], Response};
-                Node when EnableReadForward =:= false ->
-                    NodeBin = list_to_binary(atom_to_list(Node)),
-                    {ok, [Node], [{forward, << "MOVED ", KeyBin/binary, " ", NodeBin/binary >>}]}
-            end
-    end;
+    request_available_node(KeyBin, {Idx, Nodes}, Command, State, TriedNodes);
 request_replicas(mr, _, Command, State = #state{multi_op_max_concurrence = MaxP}, _TriedNodes) ->
     [NameBin | Keys] = Command,
-    Response = distributed_proxy_util:pmap(fun(Key) -> handle_each_for_multi_command(r, NameBin, Key, State, 0, []) end, Keys, MaxP),
-    {ok, [node()], Response};
+    SeqKeys = redis_proxy_util:sequence(Keys),
+    IdxKeys = redis_proxy_util:classify_keys(SeqKeys),
+    Response = distributed_proxy_util:pmap(fun({{Idx, Nodes}, SubSeqKeys}) -> handle_each_for_multi_command(r, NameBin, {Idx, Nodes}, SubSeqKeys, State, 0, []) end, IdxKeys, MaxP),
+    {_, SeqValues} = lists:unzip(Response),
+    {_, Values} = lists:unzip(lists:keysort(1, lists:flatten(SeqValues))),
+    {ok, [node()], Values};
 request_replicas(w, KeyBin, Command, _State, _TriedNodes) ->
     {Idx, Nodes} = redis_proxy_util:locate_key(KeyBin),
     RequestNodes = redis_proxy_util:generate_apl(Nodes),
@@ -207,20 +192,47 @@ stat_latency(mr, Latency) ->
 stat_latency(w, Latency) ->
     redis_proxy_status:stat_latency(write, Latency).
 
-handle_each_for_multi_command(_Type, _NameBin, _KeyBin, #state{read_max_try_times = MaxTryTimes}, TryTimes, _TriedNodes) when TryTimes >= MaxTryTimes ->
-    {error, <<"ERR all replicas are unavailable">>};
-handle_each_for_multi_command(Type, NameBin, KeyBin, State, TryTimes, TriedNodes) ->
-    RequestOneCommand = [NameBin, KeyBin],
-    case request_replicas(Type, KeyBin, RequestOneCommand, State, TriedNodes) of
+handle_each_for_multi_command(_Type, _NameBin, {Idx, _Nodes}, SubSeqKeys, #state{read_max_try_times = MaxTryTimes}, TryTimes, _TriedNodes) when TryTimes >= MaxTryTimes ->
+    {Seq, _Keys} = lists:unzip(SubSeqKeys),
+    Response = lists:duplicate(length(Seq), {error, <<"ERR all replicas are unavailable">>}),
+    {Idx, lists:zip(Seq, Response)};
+handle_each_for_multi_command(Type, NameBin, {Idx, Nodes}, SubSeqKeys, State, TryTimes, TriedNodes) ->
+    {Seq, Keys} = lists:unzip(SubSeqKeys),
+    RequestCommand = [NameBin | Keys],
+    case request_available_node(<<"">>, {Idx, Nodes}, RequestCommand, State, TriedNodes) of
         {ok, RequestNodes, Response} ->
-            case parse_response(Type, RequestOneCommand, Response, State) of
-                {ok, [Response2]} ->
-                    Response2;
+            case parse_response(Type, RequestCommand, Response, State) of
+                {ok, Response2} ->
+                    {Idx, lists:zip(Seq, Response2)};
                 {error, Reason} ->
-                    {error, Reason};
+                    Response2 = lists:duplicate(length(Seq), {error, Reason}),
+                    {Idx, lists:zip(Seq, Response2)};
                 try_again ->
-                    handle_each_for_multi_command(Type, NameBin, KeyBin, State, TryTimes + 1, lists:append(RequestNodes, TriedNodes))
+                    handle_each_for_multi_command(Type, NameBin, {Idx, Nodes}, SubSeqKeys, State, TryTimes + 1, lists:append(RequestNodes, TriedNodes))
             end;
         {error, Reason} ->
-            {error, Reason}
+            Response2 = lists:duplicate(length(Seq), {error, Reason}),
+            {Idx, lists:zip(Seq, Response2)}
+    end.
+
+request_available_node(KeyBin, {Idx, Nodes}, Command, #state{enable_read_forward = EnableReadForward}, TriedNodes) ->
+    AvailableNodes = Nodes -- TriedNodes,
+    LocalNode = node(),
+    case lists:member(LocalNode, AvailableNodes) of
+        true ->
+            GroupIndex = distributed_proxy_util:index_of(LocalNode, Nodes),
+            Response = request_replica([{GroupIndex, LocalNode}], Idx, Command),
+            {ok, [LocalNode], Response};
+        false ->
+            case redis_proxy_util:select_one_random_node(AvailableNodes) of
+                none ->
+                    {error, <<"ERR all replicas are unavailable">>};
+                Node when EnableReadForward =:= true ->
+                    GroupIndex = distributed_proxy_util:index_of(Node, Nodes),
+                    Response = request_replica([{GroupIndex, Node}], Idx, Command),
+                    {ok, [Node], Response};
+                Node when EnableReadForward =:= false ->
+                    NodeBin = list_to_binary(atom_to_list(Node)),
+                    {ok, [Node], [{forward, << "MOVED ", KeyBin/binary, " ", NodeBin/binary >>}]}
+            end
     end.

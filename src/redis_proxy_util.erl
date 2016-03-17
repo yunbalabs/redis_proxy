@@ -13,7 +13,7 @@
 -export([
     file_exists/1, wait_for_file/3, wait_for_file_deleted/3,
     select_one_random_node/1, generate_apl/1, locate_key/1,
-    redis_pool_name/2, get_millisec/0]).
+    redis_pool_name/2, get_millisec/0, sequence/1, classify_keys/1]).
 
 file_exists(Filepath) ->
     case filelib:last_modified(filename:absname(Filepath)) of
@@ -93,3 +93,28 @@ redis_pool_name(Index, GroupIndex) ->
 get_millisec() ->
     {Mega, Sec, Micro} = os:timestamp(),
     (Mega * 1000000 + Sec) * 1000 + round(Micro / 1000).
+
+sequence(List) ->
+    sequence(List, 0, []).
+
+sequence([], _No, Results) ->
+    Results;
+sequence([Item | Rest], No, Results) ->
+    sequence(Rest, No + 1, [{No, Item} | Results]).
+
+classify_keys(SeqKeys) ->
+    {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
+    classify_keys(SeqKeys, Ring, []).
+
+classify_keys([], _Ring, Results) ->
+    Results;
+classify_keys([Item = {_No, KeyBin} | Rest], Ring, Results) ->
+    {Idx, Pos, _GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
+    Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
+    NewResults = case lists:keyfind({Idx, Nodes}, 1, Results) of
+                     false ->
+                         lists:keystore({Idx, Nodes}, 1, Results, {{Idx, Nodes}, [Item]});
+                     {{Idx, Nodes}, Keys} ->
+                         lists:keystore({Idx, Nodes}, 1, Results, {{Idx, Nodes}, [Item] ++ Keys})
+                 end,
+    classify_keys(Rest, Ring, NewResults).

@@ -58,6 +58,8 @@ start_link() ->
 
 sample_latency(read) ->
     exometer:get_value([?LATENCY_NAME, read], value);
+sample_latency(multiple_read) ->
+    exometer:get_value([?LATENCY_NAME, multiple_read], value);
 sample_latency(write) ->
     exometer:get_value([?LATENCY_NAME, write], value).
 

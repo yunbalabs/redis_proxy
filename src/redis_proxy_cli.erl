@@ -68,10 +68,12 @@ status(_CmdBase, [], []) ->
             OpsTable = clique_status:table(OpsRows),
 
             {ok, [{value, LatencyRead}]} = redis_proxy_status:sample_latency(read),
+            {ok, [{value, LatencyMultipleRead}]} = redis_proxy_status:sample_latency(multiple_read),
             {ok, [{value, LatencyWrite}]} = redis_proxy_status:sample_latency(write),
 
             LatencyRows = [
                 [{type, read}, {latency_ms, LatencyRead}],
+                [{type, multiple_read}, {latency_ms, LatencyMultipleRead}],
                 [{type, write}, {latency_ms, LatencyWrite}]
             ],
 
