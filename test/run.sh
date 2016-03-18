@@ -4,7 +4,7 @@ mkdir -p logs ebin
 
 erl -pz ebin -make || exit 1
 
-TEST_CASE_DIR=(replica_failover scaleout)
+TEST_CASE_DIR=(command replica_failover scaleout)
 
 for CASE in ${TEST_CASE_DIR[@]}
 do
