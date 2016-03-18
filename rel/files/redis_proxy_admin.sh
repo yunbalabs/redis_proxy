@@ -112,6 +112,7 @@ case "$1" in
         if [ $# -eq 2 ]; then
             ensure_node_running
             $NODETOOL rpc distributed_proxy_cli command "dp-admin" "cluster" "locate" "--key" "$2"
+            $NODETOOL rpc distributed_proxy_cli command "rp-admin" "locate" "--key" "$2"
         else
             echo "Usage: $SCRIPT locate <key>"
             exit 1

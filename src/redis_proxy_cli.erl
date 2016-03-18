@@ -24,11 +24,12 @@ command(Cmd) ->
 register_all_usage() ->
     clique:register_usage(["rp-admin"], usage()),
     clique:register_usage(["rp-admin", "status"], status_usage()),
-    clique:register_usage(["rp-admin", "replica"], replica_usage()).
+    clique:register_usage(["rp-admin", "replica"], replica_usage()),
+    clique:register_usage(["rp-admin", "locate"], locate_usage()).
 
 register_all_commands() ->
     lists:foreach(fun(Args) -> apply(clique, register_command, Args) end,
-        [status_register(), replica_register()]).
+        [status_register(), replica_register(), locate_register()]).
 
 usage() ->
     [
@@ -37,6 +38,7 @@ usage() ->
         "  Sub-commands:\n",
         "    status           Display a summary of node status\n",
         "    replica          Display a replica status on the specific node\n",
+        "    locate           Display values about the specific key\n",
         "  Use --help after a sub-command for more details.\n"
     ].
 
@@ -154,4 +156,61 @@ replica_output(Node, Replica) ->
             end;
         false ->
             [clique_status:alert([clique_status:text("Cannot find the replica.")])]
+    end.
+
+locate_usage() ->
+    ["rp-admin locate --key key\n\n",
+        "  Display values about the specific key.\n"].
+
+locate_register() ->
+    [["rp-admin", "locate"],                          % Cmd
+        [],                                           % KeySpecs
+        [
+            {key, [{shortname, "k"}, {longname, "key"},
+                {typecast,
+                    fun list_to_binary/1}]}
+        ],    % FlagSpecs
+        fun locate/3].                               % Implementation callback
+
+locate(_CmdBase, [], [{key, KeyBin}]) ->
+    locate_output(KeyBin).
+
+locate_output(KeyBin) ->
+    {ok, Ring} = distributed_proxy_ring_manager:get_ring(),
+    {Idx, Pos, _GroupId} = ring:locate_key(distributed_proxy_ring:get_chashbin(Ring), KeyBin),
+    Nodes = distributed_proxy_ring:get_nodes(Pos, Ring),
+    Rows = lists:map(
+        fun (Node) ->
+            GroupIndex = distributed_proxy_util:index_of(Node, Nodes),
+            IndexBin = integer_to_binary(Idx),
+            GroupIndexBin = integer_to_binary(GroupIndex),
+            Proxy = distributed_proxy_util:replica_proxy_reg_name(<<IndexBin/binary, $_, GroupIndexBin/binary>>),
+            {Ret, KeyType} = request_replica({Proxy, Node}, [<<"type">>, KeyBin]),
+            {_, Values} = case Ret of
+                ok ->
+                    case KeyType of
+                        <<"string">> ->
+                            request_replica({Proxy, Node}, [<<"get">>, KeyBin]);
+                        <<"none">> ->
+                            {ok, <<"">>};
+                        _ ->
+                            {error, unknown}
+                    end;
+                _ ->
+                    {error, unknown}
+            end,
+            [{node, Node}, {type, KeyType}, {values, Values}]
+        end, Nodes),
+
+    [clique_status:table(Rows)].
+
+request_replica({Proxy, Node}, Command) ->
+    distributed_proxy_message:send({Proxy, Node}, Command),
+    case distributed_proxy_message:recv() of
+        {temporarily_unavailable, _} ->
+            {error, temporarily_unavailable};
+        {error, Reason} ->
+            {error, Reason};
+        {ok, Result} ->
+            {ok, Result}
     end.
