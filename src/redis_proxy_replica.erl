@@ -183,8 +183,9 @@ get_slaveof_state(#state{redis_context = RedisContext, redis_client = RedisClien
     end.
 
 start_redis(Index, GroupIndex) ->
+    [NodeName, _] = string:tokens(atom_to_list(node()), "@"),
     RedisDataDir = lists:flatten(io_lib:format("~s/~w_~w/", [?DATA_DIR, Index, GroupIndex])),
-    RedisUnixSocketFile = lists:flatten(io_lib:format("/tmp/redis.proxy.unixsocket.~s.~w_~w", [node(), Index, GroupIndex])),
+    RedisUnixSocketFile = lists:flatten(io_lib:format("/tmp/unixsocket.~w.~w_~w", [NodeName, Index, GroupIndex])),
     RedisExecutable = filename:absname(?REDIS_SERVER_PATH),
     RedisConfigFile = filename:absname(?REDIS_CONFIG_PATH),
     RedisCloseScript = filename:absname(?REDIS_CLOSE_SCRIPT),
